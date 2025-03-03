@@ -1,0 +1,82 @@
+/* Base styles */
+body {
+    padding-top: 20px;
+}
+
+/* Detail card styles */
+.detail-card {
+    background: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+/* Filter section styles */
+.filter-section {
+    background: #f8f9fa;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 5px;
+}
+
+/* Related items section */
+.related-items {
+    background: #fff;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+/* Content container */
+.content-container {
+    margin-top: 20px;
+}
+
+/* Table hover effect */
+.table-hover tbody tr:hover {
+    cursor: pointer;
+    background-color: rgba(0,0,0,.075);
+}
+
+/* Form group spacing */
+.form-group {
+    margin-bottom: 1rem;
+}
+
+/* Modal image preview */
+.img-preview {
+    max-width: 200px;
+    margin-top: 10px;
+}
+
+/* Thumbnail sizes */
+.thumbnail-sm {
+    max-width: 50px;
+    max-height: 50px;
+}
+
+.thumbnail-md {
+    max-width: 100px;
+    max-height: 100px;
+}
+
+.thumbnail-lg {
+    max-width: 200px;
+    max-height: 200px;
+}
+
+.no-image-placeholder {
+    border: 2px dashed #dee2e6;
+    border-radius: 0.25rem;
+    padding: 2rem;
+    text-align: center;
+    background: #f8f9fa;
+}
+
+.no-image-placeholder i {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 0.5rem;
+}

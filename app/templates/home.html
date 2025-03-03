@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Plants Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Plants</h5>
+                <a href="/plants" class="btn btn-sm btn-light">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_plants %}
+                <div class="list-group">
+                    {% for plant in recent_plants %}
+                    <a href="/plants/{{ plant.id }}" class="list-group-item list-group-item-action">
+                        {{ plant.name }}{% if plant.variety %} ({{ plant.variety }}){% endif %} - {{ plant.planting_method }}
+                        <small class="text-muted d-block">Added {{ plant.created_at.strftime('%Y-%m-%d') }}</small>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No plants added yet</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Notes Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Notes</h5>
+                <a href="/notes" class="btn btn-sm btn-light">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_notes %}
+                <div class="list-group">
+                    {% for note in recent_notes %}
+                    <a href="/notes/{{ note.id }}" class="list-group-item list-group-item-action">
+                        <p class="mb-1">{{ note.body|truncate(100) }}</p>
+                        {% if note.image_path %}
+                        <img src="{{ note.image_path }}" class="img-thumbnail mt-2" style="max-width: 100px">
+                        {% endif %}
+                        <small class="text-muted">{{ note.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No notes added yet</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Seed Packets Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Seed Packets</h5>
+                <a href="/seed-packets" class="btn btn-sm btn-light">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_seed_packets %}
+                <div class="list-group">
+                    {% for packet in recent_seed_packets %}
+                    <a href="/seed-packets/{{ packet.id }}" class="list-group-item list-group-item-action">
+                        {{ packet.name }}
+                        <small class="text-muted d-block">Quantity: {{ packet.quantity }}</small>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No seed packets added yet</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Garden Supplies Section -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Garden Supplies</h5>
+                <a href="/garden-supplies" class="btn btn-sm btn-light">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_supplies %}
+                <div class="list-group">
+                    {% for supply in recent_supplies %}
+                    <a href="/garden-supplies/{{ supply.id }}" class="list-group-item list-group-item-action">
+                        {{ supply.name }}
+                        {% if supply.description %}
+                        <small class="text-muted d-block">{{ supply.description|truncate(50) }}</small>
+                        {% endif %}
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">No garden supplies added yet</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

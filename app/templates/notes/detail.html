@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Note{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/notes">Notes</a></li>
+<li class="breadcrumb-item active">Note Details</li>
+{% endblock %}
+
+{% block content %}
+<div class="detail-card">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <h2>Note</h2>
+            <p class="text-muted">Created: {{ note.timestamp.strftime('%Y-%m-%d %H:%M') }}</p>
+        </div>
+        <div>
+            <button class="btn btn-primary btn-sm me-2" onclick="showEditModal({{ note.id }})">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteNote({{ note.id }})">Delete</button>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-8">
+            <div class="mb-4">
+                <h3>Content</h3>
+                <p class="mb-3">{{ note.body }}</p>
+                {% if note.image_path %}
+                <img src="{{ note.image_path }}" class="img-fluid" style="max-width: 400px;">
+                {% endif %}
+            </div>
+
+            <h3>Related Items</h3>
+            <table class="table">
+                {% if note.plant %}
+                <tr>
+                    <th>Plant:</th>
+                    <td><a href="/plants/{{ note.plant.id }}">{{ note.plant.name }}</a></td>
+                </tr>
+                {% endif %}
+                {% if note.seed_packet %}
+                <tr>
+                    <th>Seed Packet:</th>
+                    <td><a href="/seed-packets/{{ note.seed_packet.id }}">{{ note.seed_packet.name }}</a></td>
+                </tr>
+                {% endif %}
+                {% if note.garden_supply %}
+                <tr>
+                    <th>Garden Supply:</th>
+                    <td><a href="/garden-supplies/{{ note.garden_supply.id }}">{{ note.garden_supply.name }}</a></td>
+                </tr>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Note Modal -->
+<div class="modal fade" id="editNoteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Note</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editNoteForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="edit_body" class="form-label">Note</label>
+                        <textarea class="form-control" id="edit_body" name="body" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_plant_id" class="form-label">Plant (optional)</label>
+                        <select class="form-select" id="edit_plant_id" name="plant_id">
+                            <option value="">No Plant</option>
+                            {% for plant in plants %}
+                            <option value="{{ plant.id }}" {% if note.plant_id == plant.id %}selected{% endif %}>{{ plant.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_seed_packet_id" class="form-label">Seed Packet (optional)</label>
+                        <select class="form-select" id="edit_seed_packet_id" name="seed_packet_id">
+                            <option value="">No Seed Packet</option>
+                            {% for packet in seed_packets %}
+                            <option value="{{ packet.id }}" {% if note.seed_packet_id == packet.id %}selected{% endif %}>{{ packet.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_garden_supply_id" class="form-label">Garden Supply (optional)</label>
+                        <select class="form-select" id="edit_garden_supply_id" name="garden_supply_id">
+                            <option value="">No Garden Supply</option>
+                            {% for supply in supplies %}
+                            <option value="{{ supply.id }}" {% if note.garden_supply_id == supply.id %}selected{% endif %}>{{ supply.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_image" class="form-label">Image (optional)</label>
+                        <input type="file" class="form-control" id="edit_image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    async function showEditModal() {
+        try {
+            const response = await fetch(`/notes/{{ note.id }}`);
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById('edit_body').value = data.body;
+                document.getElementById('edit_plant_id').value = data.plant_id || '';
+                document.getElementById('edit_seed_packet_id').value = data.seed_packet_id || '';
+                document.getElementById('edit_garden_supply_id').value = data.garden_supply_id || '';
+                
+                const editModal = new bootstrap.Modal(document.getElementById('editNoteModal'));
+                editModal.show();
+            } else {
+                alert('Error loading note data');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error loading note data');
+        }
+    }
+
+    document.getElementById('editNoteForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch(`/notes/{{ note.id }}`, {
+                method: 'PUT',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error updating note');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating note');
+        }
+    });
+
+    async function deleteNote(id) {
+        if (!confirm('Are you sure you want to delete this note?')) return;
+        
+        try {
+            const response = await fetch(`/notes/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                window.location.href = '/notes';
+            } else {
+                alert('Error deleting note');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting note');
+        }
+    }
+</script>
+{% endblock %}

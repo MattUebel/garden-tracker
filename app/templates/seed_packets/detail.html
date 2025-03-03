@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block title %}{{ seed_packet.name }}{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item"><a href="/seed-packets">Seed Packets</a></li>
+<li class="breadcrumb-item active">{{ seed_packet.name }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="detail-card">
+    <div class="d-flex justify-content-between align-items-start">
+        <div>
+            <h2>{{ seed_packet.name }}</h2>
+            <p class="text-muted">Created: {{ seed_packet.created_at.strftime('%Y-%m-%d') }}</p>
+        </div>
+        <div>
+            <button class="btn btn-primary btn-sm me-2" onclick="showEditModal()">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSeedPacket({{ seed_packet.id }})">Delete</button>
+        </div>
+    </div>
+
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <h3>Details</h3>
+            <table class="table">
+                <tr>
+                    <th>Image:</th>
+                    <td>
+                        {% if seed_packet.image_path %}
+                        <img src="{{ seed_packet.image_path }}" alt="{{ seed_packet.name }}" class="img-thumbnail" style="max-width: 200px">
+                        {% else %}
+                        <div class="no-image-placeholder">
+                            <i class="bi bi-image text-muted"></i>
+                            <span class="text-muted">No image available</span>
+                        </div>
+                        {% endif %}
+                    </td>
+                </tr>
+                <tr>
+                    <th>Quantity:</th>
+                    <td>{{ seed_packet.quantity }}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Related Items -->
+<div class="row">
+    <!-- Plants -->
+    <div class="col-md-6">
+        <div class="related-items">
+            <div class="d-flex justify-content-between align-items-center">
+                <h3>Plants</h3>
+                <a href="/plants?seed_packet_id={{ seed_packet.id }}" class="btn btn-primary btn-sm">View All</a>
+            </div>
+            {% if seed_packet.plants %}
+            <div class="list-group mt-3">
+                {% for plant in seed_packet.plants %}
+                <a href="/plants/{{ plant.id }}" class="list-group-item list-group-item-action">
+                    {{ plant.name }}
+                    <small class="text-muted d-block">{{ plant.planting_method }}</small>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted mt-3">No plants using this seed packet yet</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="col-md-6">
+        <div class="related-items">
+            <div class="d-flex justify-content-between align-items-center">
+                <h3>Notes</h3>
+                <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addNoteModal">
+                    Add Note
+                </button>
+            </div>
+            {% if notes %}
+            <div class="list-group mt-3">
+                {% for note in notes %}
+                <a href="/notes/{{ note.id }}" class="list-group-item list-group-item-action">
+                    <p class="mb-1">{{ note.body }}</p>
+                    {% if note.image_path %}
+                    <img src="{{ note.image_path }}" class="img-thumbnail mt-2" style="max-width: 100px">
+                    {% endif %}
+                    <small class="text-muted">{{ note.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted mt-3">No notes added yet</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Add Note Modal -->
+<div class="modal fade" id="addNoteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Note</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addNoteForm" enctype="multipart/form-data">
+                    <input type="hidden" name="seed_packet_id" value="{{ seed_packet.id }}">
+                    <div class="mb-3">
+                        <label for="body" class="form-label">Note</label>
+                        <textarea class="form-control" id="body" name="body" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="image" class="form-label">Image (optional)</label>
+                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Note</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Seed Packet Modal -->
+<div class="modal fade" id="editSeedPacketModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Seed Packet</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSeedPacketForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="edit_quantity" name="quantity" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_image" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="edit_image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add Note
+    document.getElementById('addNoteForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch('/notes/', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error adding note');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error adding note');
+        }
+    });
+
+    // Delete seed packet
+    async function deleteSeedPacket(id) {
+        if (!confirm('Are you sure you want to delete this seed packet? This will also remove all associated plants.')) return;
+        
+        try {
+            const response = await fetch(`/seed-packets/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                window.location.href = '/seed-packets';
+            } else {
+                alert('Error deleting seed packet');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting seed packet');
+        }
+    }
+
+    // Show edit modal
+    async function showEditModal() {
+        try {
+            const response = await fetch(`/seed-packets/{{ seed_packet.id }}`);
+            if (response.ok) {
+                const packet = await response.json();
+                document.getElementById('edit_name').value = packet.name;
+                document.getElementById('edit_quantity').value = packet.quantity;
+                
+                const editModal = new bootstrap.Modal(document.getElementById('editSeedPacketModal'));
+                editModal.show();
+            } else {
+                alert('Error loading seed packet data');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error loading seed packet data');
+        }
+    }
+
+    // Edit form submission handler
+    document.getElementById('editSeedPacketForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch(`/seed-packets/{{ seed_packet.id }}`, {
+                method: 'PUT',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error updating seed packet');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating seed packet');
+        }
+    });
+</script>
+{% endblock %}

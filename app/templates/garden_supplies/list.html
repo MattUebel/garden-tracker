@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Garden Supplies{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active">Garden Supplies</li>
+{% endblock %}
+
+{% block content %}
+<div class="filter-section">
+    <form class="filter-form" method="GET">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ filters.get('name', '') }}">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group">
+                    <label for="category">Category</label>
+                    <input type="text" class="form-control" id="category" name="category" value="{{ filters.get('category', '') }}">
+                </div>
+            </div>
+            <div class="col-md-4 mt-4">
+                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                <a href="/garden-supplies" class="btn btn-secondary">Clear Filters</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="content-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Garden Supplies</h2>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSupplyModal">
+            Add Supply
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Name</th>
+                    <th>Description</th>
+                    <th>Plants</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for supply in supplies %}
+                <tr data-href="/garden-supplies/{{ supply.id }}">
+                    <td>
+                        {% if supply.image_path %}
+                        <img src="{{ supply.image_path }}" alt="{{ supply.name }}" style="max-width: 50px; max-height: 50px;">
+                        {% else %}
+                        <div class="no-image-placeholder" style="width: 50px; height: 50px; font-size: 0.8rem; padding: 0.5rem;">
+                            <i class="bi bi-image"></i>
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ supply.name }}</td>
+                    <td>{{ supply.description or '' }}</td>
+                    <td>
+                        <a href="/plants?supply_id={{ supply.id }}" onclick="event.stopPropagation();">
+                            {{ supply.plants|length }} plants
+                        </a>
+                    </td>
+                    <td>{{ supply.created_at.strftime('%Y-%m-%d') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Supply Modal -->
+<div class="modal fade" id="addSupplyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Garden Supply</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addSupplyForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description</label>
+                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="image" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Supply</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Supply Modal -->
+<div class="modal fade" id="editSupplyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Garden Supply</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSupplyForm" enctype="multipart/form-data">
+                    <input type="hidden" id="edit_id" name="id">
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_description" class="form-label">Description</label>
+                        <textarea class="form-control" id="edit_description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_image" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="edit_image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('addSupplyForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch('/garden-supplies/', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error creating garden supply');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error creating garden supply');
+        }
+    });
+
+    // Show edit modal
+    function showEditModal(supply) {
+        document.getElementById('edit_id').value = supply.id;
+        document.getElementById('edit_name').value = supply.name;
+        document.getElementById('edit_description').value = supply.description || '';
+        
+        const editModal = new bootstrap.Modal(document.getElementById('editSupplyModal'));
+        editModal.show();
+    }
+
+    // Edit form submission
+    document.getElementById('editSupplyForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const id = formData.get('id');
+        formData.delete('id');
+        
+        try {
+            const response = await fetch(`/garden-supplies/${id}`, {
+                method: 'PUT',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error updating garden supply');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating garden supply');
+        }
+    });
+
+    // Delete handler
+    async function deleteSupply(id) {
+        if (!confirm('Are you sure you want to delete this garden supply?')) return;
+        
+        try {
+            const response = await fetch(`/garden-supplies/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error deleting garden supply');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting garden supply');
+        }
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+
+{% block title %}Plants{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active">Plants</li>
+{% endblock %}
+
+{% block content %}
+<div class="filter-section">
+    <form class="filter-form" method="GET">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ filters.get('name', '') }}">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="variety">Variety</label>
+                    <input type="text" class="form-control" id="variety" name="variety" value="{{ filters.get('variety', '') }}">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="planting_method">Planting Method</label>
+                    <select class="form-control" id="planting_method" name="planting_method">
+                        <option value="">All Methods</option>
+                        {% for method in planting_methods %}
+                        <option value="{{ method.value }}" {% if method.value == filters.get('planting_method') %}selected{% endif %}>
+                            {{ method.value }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="year_id">Year</label>
+                    <select class="form-control" id="year_id" name="year_id">
+                        <option value="">All Years</option>
+                        {% for year in years %}
+                        <option value="{{ year.year }}" {% if year.year == filters.get('year_id') %}selected{% endif %}>
+                            {{ year.year }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="seed_packet_id">Seed Packet</label>
+                    <select class="form-control" id="seed_packet_id" name="seed_packet_id">
+                        <option value="">All Seed Packets</option>
+                        {% for packet in seed_packets %}
+                        <option value="{{ packet.id }}" {% if packet.id == filters.get('seed_packet_id') %}selected{% endif %}>
+                            {{ packet.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="supply_id">Garden Supply</label>
+                    <select class="form-control" id="supply_id" name="supply_id">
+                        <option value="">All Supplies</option>
+                        {% for supply in supplies %}
+                        <option value="{{ supply.id }}" {% if supply.id == filters.get('supply_id') %}selected{% endif %}>
+                            {{ supply.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-3 mt-4">
+                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                <a href="/plants" class="btn btn-secondary">Clear Filters</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="content-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Plants</h2>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPlantModal">
+            Add Plant
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Variety</th>
+                    <th>Planting Method</th>
+                    <th>Year</th>
+                    <th>Seed Packet</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for plant in plants %}
+                <tr data-href="/plants/{{ plant.id }}">
+                    <td>{{ plant.name }}</td>
+                    <td>{{ plant.variety or '' }}</td>
+                    <td>{{ plant.planting_method }}</td>
+                    <td>{{ plant.year.year }}</td>
+                    <td>
+                        {% if plant.seed_packet %}
+                        <a href="/seed-packets/{{ plant.seed_packet.id }}" onclick="event.stopPropagation();">
+                            {{ plant.seed_packet.name }}
+                        </a>
+                        {% endif %}
+                    </td>
+                    <td>{{ plant.created_at.strftime('%Y-%m-%d') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Plant Modal -->
+<div class="modal fade" id="addPlantModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Plant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addPlantForm">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="variety" class="form-label">Variety</label>
+                        <input type="text" class="form-control" id="variety" name="variety">
+                    </div>
+                    <div class="mb-3">
+                        <label for="planting_method" class="form-label">Planting Method</label>
+                        <select class="form-select" id="planting_method" name="planting_method" required>
+                            {% for method in planting_methods %}
+                            <option value="{{ method.value }}">{{ method.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="seed_packet_id" class="form-label">Seed Packet</label>
+                        <select class="form-select" id="seed_packet_id" name="seed_packet_id">
+                            <option value="">No Seed Packet</option>
+                            {% for packet in seed_packets %}
+                            <option value="{{ packet.id }}">{{ packet.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Plant</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Plant Modal -->
+<div class="modal fade" id="editPlantModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Plant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editPlantForm">
+                    <input type="hidden" id="edit_plant_id" name="plant_id">
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_variety" class="form-label">Variety</label>
+                        <input type="text" class="form-control" id="edit_variety" name="variety">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_planting_method" class="form-label">Planting Method</label>
+                        <select class="form-select" id="edit_planting_method" name="planting_method" required>
+                            {% for method in planting_methods %}
+                            <option value="{{ method.value }}">{{ method.value }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_seed_packet_id" class="form-label">Seed Packet</label>
+                        <select class="form-select" id="edit_seed_packet_id" name="seed_packet_id">
+                            <option value="">No Seed Packet</option>
+                            {% for packet in seed_packets %}
+                            <option value="{{ packet.id }}">{{ packet.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Form submission handler
+    document.getElementById('addPlantForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+        
+        try {
+            const response = await fetch('/plants/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error creating plant');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error creating plant');
+        }
+    });
+
+    // Show edit modal and populate form
+    async function showEditModal(id) {
+        try {
+            const response = await fetch(`/plants/${id}`);
+            if (response.ok) {
+                const plant = await response.json();
+                document.getElementById('edit_plant_id').value = plant.id;
+                document.getElementById('edit_name').value = plant.name;
+                document.getElementById('edit_variety').value = plant.variety || '';
+                document.getElementById('edit_planting_method').value = plant.planting_method;
+                document.getElementById('edit_seed_packet_id').value = plant.seed_packet_id || '';
+                
+                const editModal = new bootstrap.Modal(document.getElementById('editPlantModal'));
+                editModal.show();
+            } else {
+                alert('Error loading plant data');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error loading plant data');
+        }
+    }
+
+    // Edit form submission handler
+    document.getElementById('editPlantForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const plantId = formData.get('plant_id');
+        formData.delete('plant_id');
+        
+        const data = Object.fromEntries(formData.entries());
+        if (!data.seed_packet_id) delete data.seed_packet_id;
+        
+        try {
+            const response = await fetch(`/plants/${plantId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error updating plant');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating plant');
+        }
+    });
+
+    async function deletePlant(id) {
+        if (!confirm('Are you sure you want to delete this plant?')) return;
+        
+        try {
+            const response = await fetch(`/plants/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error deleting plant');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting plant');
+        }
+    }
+</script>
+{% endblock %}

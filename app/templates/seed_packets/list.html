@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}Seed Packets{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active">Seed Packets</li>
+{% endblock %}
+
+{% block content %}
+<div class="filter-section">
+    <form class="filter-form" method="GET">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="form-group">
+                    <label for="name">Name</label>
+                    <input type="text" class="form-control" id="name" name="name" value="{{ filters.get('name', '') }}">
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="form-group">
+                    <label for="variety">Variety</label>
+                    <input type="text" class="form-control" id="variety" name="variety" value="{{ filters.get('variety', '') }}">
+                </div>
+            </div>
+            <div class="col-md-4 mt-4">
+                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                <a href="/seed-packets" class="btn btn-secondary">Clear Filters</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="content-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Seed Packets</h2>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addSeedPacketModal">
+            Add Seed Packet
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Name</th>
+                    <th>Variety</th>
+                    <th>Quantity</th>
+                    <th>Plants</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for packet in seed_packets %}
+                <tr data-href="/seed-packets/{{ packet.id }}">
+                    <td>
+                        {% if packet.image_path %}
+                        <img src="{{ packet.image_path }}" alt="{{ packet.name }}" style="max-width: 50px; max-height: 50px;">
+                        {% else %}
+                        <div class="no-image-placeholder" style="width: 50px; height: 50px; font-size: 0.8rem; padding: 0.5rem;">
+                            <i class="bi bi-image"></i>
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ packet.name }}</td>
+                    <td>{{ packet.variety or '' }}</td>
+                    <td>{{ packet.quantity }}</td>
+                    <td>
+                        <a href="/plants?seed_packet_id={{ packet.id }}" onclick="event.stopPropagation();">
+                            {{ packet.plants|length }} plants
+                        </a>
+                    </td>
+                    <td>{{ packet.created_at.strftime('%Y-%m-%d') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Seed Packet Modal -->
+<div class="modal fade" id="addSeedPacketModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Seed Packet</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addSeedPacketForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="variety" class="form-label">Variety</label>
+                        <input type="text" class="form-control" id="variety" name="variety">
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity" name="quantity" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="image" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Seed Packet</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Seed Packet Modal -->
+<div class="modal fade" id="editSeedPacketModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Seed Packet</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSeedPacketForm" enctype="multipart/form-data">
+                    <input type="hidden" id="edit_id" name="id">
+                    <div class="mb-3">
+                        <label for="edit_name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_variety" class="form-label">Variety</label>
+                        <input type="text" class="form-control" id="edit_variety" name="variety">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="edit_quantity" name="quantity" required min="0">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_image" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="edit_image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.getElementById('addSeedPacketForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch('/seed-packets/', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error creating seed packet');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error creating seed packet');
+        }
+    });
+
+    // Show edit modal
+    function showEditModal(packet) {
+        document.getElementById('edit_id').value = packet.id;
+        document.getElementById('edit_name').value = packet.name;
+        document.getElementById('edit_variety').value = packet.variety || '';
+        document.getElementById('edit_quantity').value = packet.quantity;
+        
+        const editModal = new bootstrap.Modal(document.getElementById('editSeedPacketModal'));
+        editModal.show();
+    }
+
+    // Edit form submission
+    document.getElementById('editSeedPacketForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const id = formData.get('id');
+        formData.delete('id');
+        
+        try {
+            const response = await fetch(`/seed-packets/${id}`, {
+                method: 'PUT',
+                body: formData // FormData will automatically set correct Content-Type
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error?.message || 'Error updating seed packet');
+                return;
+            }
+            
+            window.location.reload();
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating seed packet');
+        }
+    });
+
+    // Delete handler
+    async function deleteSeedPacket(id) {
+        if (!confirm('Are you sure you want to delete this seed packet?')) return;
+        
+        try {
+            const response = await fetch(`/seed-packets/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error deleting seed packet');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting seed packet');
+        }
+    }
+</script>
+{% endblock %}

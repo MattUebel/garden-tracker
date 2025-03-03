@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+app/logs/*
+!app/logs/.gitkeep
+
+# Local development settings
+.env
+.env.local
+*.env
+.env.*
+!.env.example
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Uploads and static content
+app/static/uploads/*
+!app/static/uploads/.gitkeep
+
+# FastAPI
+.pytest_cache/
+coverage.xml
+.coverage
+htmlcov/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Alembic
+migrations/versions/__pycache__/
+migrations/__pycache__/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Testing
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
