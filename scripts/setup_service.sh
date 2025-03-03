@@ -12,6 +12,7 @@ SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 APP_PATH="$(pwd)"
 BACKUP_PATH="/var/backups/${SERVICE_NAME}"
 BACKUP_SCRIPT="${APP_PATH}/scripts/backup_db.sh"
+CURRENT_USER=$(logname)
 
 # Find docker and docker compose executables
 DOCKER_PATH=$(which docker)
@@ -29,7 +30,7 @@ fi
 echo "Setting up Garden Tracker service..."
 echo "Using Docker from: $DOCKER_PATH"
 
-# Create systemd service file if it doesn't exist or has changed
+# Create systemd service file
 cat > /tmp/${SERVICE_NAME}.service << EOL
 [Unit]
 Description=Garden Tracker Application
@@ -39,10 +40,11 @@ After=docker.service
 [Service]
 Type=simple
 WorkingDirectory=${APP_PATH}
-ExecStart=${DOCKER_COMPOSE_PATH} up
-ExecStop=${DOCKER_COMPOSE_PATH} down
+# Use sudo for Docker commands
+ExecStart=/usr/bin/sudo ${DOCKER_COMPOSE_PATH} up
+ExecStop=/usr/bin/sudo ${DOCKER_COMPOSE_PATH} down
 Restart=always
-User=$(logname)
+User=${CURRENT_USER}
 
 [Install]
 WantedBy=multi-user.target
@@ -58,10 +60,18 @@ else
   echo "Service file unchanged"
 fi
 
+# Configure sudo to allow docker compose without password
+SUDOERS_FILE="/etc/sudoers.d/garden-tracker"
+cat > $SUDOERS_FILE << EOL
+# Allow garden-tracker service to use docker compose without password
+${CURRENT_USER} ALL=(ALL) NOPASSWD: ${DOCKER_PATH} compose *
+EOL
+chmod 440 $SUDOERS_FILE
+
 # Create backup directory if it doesn't exist
 if [ ! -d "$BACKUP_PATH" ]; then
   mkdir -p $BACKUP_PATH
-  chown $(logname):$(logname) $BACKUP_PATH
+  chown $CURRENT_USER:$CURRENT_USER $BACKUP_PATH
   echo "Created backup directory"
 fi
 
@@ -78,8 +88,8 @@ BACKUP_FILE="\${BACKUP_PATH}/garden_tracker_\${DATE}.sql"
 # Ensure backup directory exists
 mkdir -p \$BACKUP_PATH
 
-# Create backup using detected docker path
-${DOCKER_PATH} exec \$CONTAINER_NAME pg_dump -U postgres garden_tracker > \$BACKUP_FILE
+# Create backup using sudo and detected docker path
+sudo ${DOCKER_PATH} exec \$CONTAINER_NAME pg_dump -U postgres garden_tracker > \$BACKUP_FILE
 
 # Remove backups older than 5 days
 find \$BACKUP_PATH -name "garden_tracker_*.sql" -mtime +5 -delete
@@ -87,19 +97,27 @@ EOL
 
 # Make backup script executable
 chmod +x $BACKUP_SCRIPT
+chown $CURRENT_USER:$CURRENT_USER $BACKUP_SCRIPT
+
+# Configure sudo for backup script
+cat >> $SUDOERS_FILE << EOL
+
+# Allow garden-tracker backup script to use docker without password
+${CURRENT_USER} ALL=(ALL) NOPASSWD: ${DOCKER_PATH} exec ${SERVICE_NAME}-db-1 pg_dump *
+EOL
 
 # Add backup cron job if it doesn't exist
 CRON_JOB="0 0 * * * ${BACKUP_SCRIPT}"
-if ! crontab -l -u $(logname) 2>/dev/null | grep -q "${BACKUP_SCRIPT}"; then
-  (crontab -l -u $(logname) 2>/dev/null; echo "$CRON_JOB") | crontab -u $(logname) -
+if ! crontab -l -u $CURRENT_USER 2>/dev/null | grep -q "${BACKUP_SCRIPT}"; then
+  (crontab -l -u $CURRENT_USER 2>/dev/null; echo "$CRON_JOB") | crontab -u $CURRENT_USER -
   echo "Added backup cron job"
 else
   echo "Backup cron job already exists"
 fi
 
 # Create required Docker volumes if they don't exist
-docker volume create garden_uploads 2>/dev/null || true
-docker volume create postgres_data 2>/dev/null || true
+sudo $DOCKER_PATH volume create garden_uploads 2>/dev/null || true
+sudo $DOCKER_PATH volume create postgres_data 2>/dev/null || true
 
 # Setup service
 if [ "$RELOAD_NEEDED" = true ] || ! systemctl is-active --quiet $SERVICE_NAME; then
@@ -122,4 +140,4 @@ echo "- View logs: journalctl -u ${SERVICE_NAME}"
 echo "- Start service: systemctl start ${SERVICE_NAME}"
 echo "- Stop service: systemctl stop ${SERVICE_NAME}"
 echo "- Restart service: systemctl restart ${SERVICE_NAME}"
-echo "- View application logs: docker compose logs"
+echo "- View application logs: sudo docker compose logs"
