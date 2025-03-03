@@ -13,7 +13,21 @@ APP_PATH="$(pwd)"
 BACKUP_PATH="/var/backups/${SERVICE_NAME}"
 BACKUP_SCRIPT="${APP_PATH}/scripts/backup_db.sh"
 
+# Find docker and docker compose executables
+DOCKER_PATH=$(which docker)
+if [ -z "$DOCKER_PATH" ]; then
+    echo "Docker not found. Please install Docker first."
+    exit 1
+fi
+
+DOCKER_COMPOSE_PATH="${DOCKER_PATH} compose"
+if ! $DOCKER_PATH compose version >/dev/null 2>&1; then
+    echo "Docker Compose not found. Please install Docker Compose first."
+    exit 1
+fi
+
 echo "Setting up Garden Tracker service..."
+echo "Using Docker from: $DOCKER_PATH"
 
 # Create systemd service file if it doesn't exist or has changed
 cat > /tmp/${SERVICE_NAME}.service << EOL
@@ -25,8 +39,8 @@ After=docker.service
 [Service]
 Type=simple
 WorkingDirectory=${APP_PATH}
-ExecStart=/usr/local/bin/docker compose up
-ExecStop=/usr/local/bin/docker compose down
+ExecStart=${DOCKER_COMPOSE_PATH} up
+ExecStop=${DOCKER_COMPOSE_PATH} down
 Restart=always
 User=$(logname)
 
@@ -64,8 +78,8 @@ BACKUP_FILE="\${BACKUP_PATH}/garden_tracker_\${DATE}.sql"
 # Ensure backup directory exists
 mkdir -p \$BACKUP_PATH
 
-# Create backup using proper credentials from docker-compose
-docker exec \$CONTAINER_NAME pg_dump -U postgres garden_tracker > \$BACKUP_FILE
+# Create backup using detected docker path
+${DOCKER_PATH} exec \$CONTAINER_NAME pg_dump -U postgres garden_tracker > \$BACKUP_FILE
 
 # Remove backups older than 5 days
 find \$BACKUP_PATH -name "garden_tracker_*.sql" -mtime +5 -delete
