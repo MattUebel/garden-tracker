@@ -31,7 +31,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=garden_db
+      - POSTGRES_DB=postgres  # Changed to postgres to ensure proper initialization
     ports:
       - "${DB_PORT:-5432}:5432"
     healthcheck:
@@ -39,6 +39,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    command: postgres -c 'max_connections=100' -c 'shared_buffers=128MB'
 
 volumes:
   postgres_data:
