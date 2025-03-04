@@ -11,8 +11,11 @@ services:
       - .:/app
       - garden_uploads:/app/app/static/uploads
     environment:
+      - POSTGRES_USER=garden_user
+      - POSTGRES_PASSWORD=mygarden
+      - POSTGRES_DB=garden_db
+      - POSTGRES_HOST=db
       - DATABASE_URL=postgresql://garden_user:mygarden@db:5432/garden_db
-      - DB_HOST=db
       - PYTHONPATH=/app
       - DEBUG=${DEBUG:-false}
     depends_on:
