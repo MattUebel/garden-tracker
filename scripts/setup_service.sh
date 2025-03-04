@@ -41,7 +41,7 @@ After=docker.service
 Type=simple
 WorkingDirectory=${APP_PATH}
 # Use sudo for Docker commands
-ExecStart=/usr/bin/sudo ${DOCKER_COMPOSE_PATH} up
+ExecStart=/usr/bin/sudo ${DOCKER_COMPOSE_PATH} up --build
 ExecStop=/usr/bin/sudo ${DOCKER_COMPOSE_PATH} down
 Restart=always
 User=${CURRENT_USER}
