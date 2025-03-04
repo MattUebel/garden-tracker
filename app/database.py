@@ -10,7 +10,7 @@ load_dotenv()
 
 # Use localhost for local development, 'db' for Docker
 host = os.getenv('DB_HOST', 'localhost')
-SQLALCHEMY_DATABASE_URL = f"postgresql://garden_user:postgres@{host}:5432/garden_db"
+SQLALCHEMY_DATABASE_URL = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{host}:5432/{os.getenv('DB_NAME')}"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

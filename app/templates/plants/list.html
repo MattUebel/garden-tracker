@@ -221,6 +221,9 @@
         const formData = new FormData(this);
         const data = Object.fromEntries(formData.entries());
         
+        // Remove seed_packet_id if it's empty
+        if (!data.seed_packet_id) delete data.seed_packet_id;
+        
         try {
             const response = await fetch('/plants/', {
                 method: 'POST',

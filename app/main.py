@@ -287,7 +287,12 @@ def create_plant(plant: PlantCreate, db: Session = Depends(get_db)):
             db.commit()
             db.refresh(current_year)
 
-        db_plant = models.Plant(**plant.dict(), year_id=current_year.year)
+        # Create plant data dict and remove seed_packet_id if it's empty
+        plant_data = plant.dict()
+        if not plant_data.get('seed_packet_id'):
+            plant_data.pop('seed_packet_id', None)
+
+        db_plant = models.Plant(**plant_data, year_id=current_year.year)
         db.add(db_plant)
         db.commit()
         db.refresh(db_plant)
@@ -368,7 +373,12 @@ def update_plant(plant_id: int, plant: PlantCreate, db: Session = Depends(get_db
     if db_plant is None:
         raise HTTPException(status_code=404, detail="Plant not found")
     
-    for key, value in plant.dict().items():
+    # Create a dict of updates and remove seed_packet_id if it's empty
+    update_data = plant.dict()
+    if not update_data.get('seed_packet_id'):
+        update_data.pop('seed_packet_id', None)
+    
+    for key, value in update_data.items():
         setattr(db_plant, key, value)
     
     db.commit()
@@ -911,17 +921,23 @@ async def notes_page(
     plant_id: Optional[int] = None,
     seed_packet_id: Optional[int] = None,
     supply_id: Optional[int] = None,
-    date_min: Optional[datetime] = None,
-    date_max: Optional[datetime] = None,
+    date_min: Optional[str] = Query(None, description="Minimum date in YYYY-MM-DD format"),
+    date_max: Optional[str] = Query(None, description="Maximum date in YYYY-MM-DD format"),
     db: Session = Depends(get_db)
 ):
     query = db.query(models.Note)
+    
+    # Convert string dates to datetime objects for filtering
+    if date_min:
+        query = query.filter(models.Note.timestamp >= datetime.fromisoformat(f"{date_min}T00:00:00"))
+    if date_max:
+        query = query.filter(models.Note.timestamp <= datetime.fromisoformat(f"{date_max}T23:59:59"))
+    
+    # Apply other filters
     filters = {
         "plant_id": plant_id,
         "seed_packet_id": seed_packet_id,
-        "supply_id": supply_id,
-        "timestamp_min": date_min,
-        "timestamp_max": date_max
+        "supply_id": supply_id
     }
     query = apply_filters(query, models.Note, filters)
     notes = query.order_by(models.Note.timestamp.desc()).all()
@@ -930,6 +946,12 @@ async def notes_page(
     plants = db.query(models.Plant).order_by(models.Plant.name).all()
     seed_packets = db.query(models.SeedPacket).order_by(models.SeedPacket.name).all()
     supplies = db.query(models.GardenSupply).order_by(models.GardenSupply.name).all()
+    
+    # Add date filters back for form display
+    filters.update({
+        "date_min": date_min,
+        "date_max": date_max
+    })
     
     return templates.TemplateResponse(
         "notes/list.html",
