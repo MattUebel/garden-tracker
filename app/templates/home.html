@@ -9,7 +9,10 @@
         <div class="card">
             <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Recent Plants</h5>
-                <a href="/plants" class="btn btn-sm btn-light">View All</a>
+                <div>
+                    <button type="button" class="btn btn-sm btn-light me-2" data-bs-toggle="modal" data-bs-target="#addPlantModal">Add</button>
+                    <a href="/plants" class="btn btn-sm btn-light">View All</a>
+                </div>
             </div>
             <div class="card-body">
                 {% if recent_plants %}
@@ -33,7 +36,10 @@
         <div class="card">
             <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Recent Notes</h5>
-                <a href="/notes" class="btn btn-sm btn-light">View All</a>
+                <div>
+                    <button type="button" class="btn btn-sm btn-light me-2" data-bs-toggle="modal" data-bs-target="#addNoteModal">Add</button>
+                    <a href="/notes" class="btn btn-sm btn-light">View All</a>
+                </div>
             </div>
             <div class="card-body">
                 {% if recent_notes %}
@@ -60,7 +66,10 @@
         <div class="card">
             <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Recent Seed Packets</h5>
-                <a href="/seed-packets" class="btn btn-sm btn-light">View All</a>
+                <div>
+                    <button type="button" class="btn btn-sm btn-light me-2" data-bs-toggle="modal" data-bs-target="#addSeedPacketModal">Add</button>
+                    <a href="/seed-packets" class="btn btn-sm btn-light">View All</a>
+                </div>
             </div>
             <div class="card-body">
                 {% if recent_seed_packets %}
@@ -84,7 +93,10 @@
         <div class="card">
             <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Recent Garden Supplies</h5>
-                <a href="/garden-supplies" class="btn btn-sm btn-light">View All</a>
+                <div>
+                    <button type="button" class="btn btn-sm btn-light me-2" data-bs-toggle="modal" data-bs-target="#addSupplyModal">Add</button>
+                    <a href="/garden-supplies" class="btn btn-sm btn-light">View All</a>
+                </div>
             </div>
             <div class="card-body">
                 {% if recent_supplies %}
@@ -105,4 +117,217 @@
         </div>
     </div>
 </div>
+
+<!-- Add Plant Modal -->
+<div class="modal fade" id="addPlantModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Plant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addPlantForm">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="variety" class="form-label">Variety (optional)</label>
+                        <input type="text" class="form-control" id="variety" name="variety">
+                    </div>
+                    <div class="mb-3">
+                        <label for="planting_method" class="form-label">Planting Method</label>
+                        <select class="form-select" id="planting_method" name="planting_method" required>
+                            <option value="RAISED_BED">Raised Bed</option>
+                            <option value="SEEDLY_TRAY">Seedling Tray</option>
+                            <option value="POT">Pot</option>
+                            <option value="GROUND">Ground</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Plant</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Note Modal -->
+<div class="modal fade" id="addNoteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Note</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addNoteForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="body" class="form-label">Note</label>
+                        <textarea class="form-control" id="body" name="body" rows="3" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="image" class="form-label">Image (optional)</label>
+                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Note</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Seed Packet Modal -->
+<div class="modal fade" id="addSeedPacketModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Seed Packet</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addSeedPacketForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity</label>
+                        <input type="number" class="form-control" id="quantity" name="quantity" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="image" class="form-label">Image (optional)</label>
+                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Seed Packet</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Garden Supply Modal -->
+<div class="modal fade" id="addSupplyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Garden Supply</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addSupplyForm" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Name</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Description (optional)</label>
+                        <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="image" class="form-label">Image (optional)</label>
+                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Supply</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+    // Add Plant Form Handler
+    document.getElementById('addPlantForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+        
+        try {
+            const response = await fetch('/plants/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error adding plant');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error adding plant');
+        }
+    });
+
+    // Add Note Form Handler
+    document.getElementById('addNoteForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch('/notes/', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error adding note');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error adding note');
+        }
+    });
+
+    // Add Seed Packet Form Handler
+    document.getElementById('addSeedPacketForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch('/seed-packets/', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error adding seed packet');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error adding seed packet');
+        }
+    });
+
+    // Add Garden Supply Form Handler
+    document.getElementById('addSupplyForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        
+        try {
+            const response = await fetch('/garden-supplies/', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error adding garden supply');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error adding garden supply');
+        }
+    });
+</script>
+{% endblock %}
 {% endblock %}
