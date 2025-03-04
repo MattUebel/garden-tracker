@@ -989,3 +989,31 @@ def get_note(note_id: int, request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.exception(f"Error retrieving note", extra={"note_id": note_id})
         raise DatabaseOperationException("query", str(e))
+
+@app.get("/harvests", response_class=HTMLResponse)
+async def harvests_page(
+    request: Request,
+    plant_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(models.Harvest)
+    filters = {"plant_id": plant_id}
+    
+    if plant_id:
+        query = query.filter(models.Harvest.plant_id == plant_id)
+    
+    # Get all plants for the dropdown
+    plants = db.query(models.Plant).order_by(models.Plant.name).all()
+    
+    # Get harvests with related plant info
+    harvests = query.join(models.Plant).order_by(models.Harvest.timestamp.desc()).all()
+    
+    return templates.TemplateResponse(
+        "harvests/list.html",
+        {
+            "request": request,
+            "harvests": harvests,
+            "plants": plants,
+            "filters": filters
+        }
+    )

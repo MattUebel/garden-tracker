@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Harvests{% endblock %}
+
+{% block breadcrumb %}
+<li class="breadcrumb-item"><a href="/">Home</a></li>
+<li class="breadcrumb-item active">Harvests</li>
+{% endblock %}
+
+{% block content %}
+<div class="filter-section">
+    <form class="filter-form" method="GET">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="plant_id">Plant</label>
+                    <select class="form-control" id="plant_id" name="plant_id">
+                        <option value="">All Plants</option>
+                        {% for plant in plants %}
+                        <option value="{{ plant.id }}" {% if plant.id == filters.get('plant_id') %}selected{% endif %}>
+                            {{ plant.name }}{% if plant.variety %} ({{ plant.variety }}){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-3 mt-4">
+                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                <a href="/harvests" class="btn btn-secondary">Clear Filters</a>
+            </div>
+        </div>
+    </form>
+</div>
+
+<div class="content-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Harvests</h2>
+        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addHarvestModal">
+            Add Harvest
+        </button>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Plant</th>
+                    <th>Weight (oz)</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for harvest in harvests %}
+                <tr>
+                    <td>{{ harvest.timestamp.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        <a href="/plants/{{ harvest.plant.id }}">
+                            {{ harvest.plant.name }}
+                            {% if harvest.plant.variety %}({{ harvest.plant.variety }}){% endif %}
+                        </a>
+                    </td>
+                    <td>{{ harvest.weight_oz }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="deleteHarvest({{ harvest.id }})">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Harvest Modal -->
+<div class="modal fade" id="addHarvestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add New Harvest</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addHarvestForm">
+                    <div class="mb-3">
+                        <label for="plant_id" class="form-label">Plant</label>
+                        <select class="form-select" id="plant_id" name="plant_id" required>
+                            <option value="">Select Plant</option>
+                            {% for plant in plants %}
+                            <option value="{{ plant.id }}">
+                                {{ plant.name }}{% if plant.variety %} ({{ plant.variety }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="weight_oz" class="form-label">Weight (oz)</label>
+                        <input type="number" step="0.1" class="form-control" id="weight_oz" name="weight_oz" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Harvest</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Add form submission handler
+    document.getElementById('addHarvestForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const data = Object.fromEntries(formData.entries());
+        
+        try {
+            const response = await fetch('/harvests/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error adding harvest');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error adding harvest');
+        }
+    });
+
+    // Delete handler
+    async function deleteHarvest(id) {
+        if (!confirm('Are you sure you want to delete this harvest?')) return;
+        
+        try {
+            const response = await fetch(`/harvests/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error deleting harvest');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting harvest');
+        }
+    }
+</script>
+{% endblock %}
