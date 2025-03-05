@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path("app/static/uploads")
 ALLOWED_IMAGE_TYPES = {"jpeg", "jpg", "png", "gif"}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 def validate_image(file: UploadFile) -> bool:
     """
