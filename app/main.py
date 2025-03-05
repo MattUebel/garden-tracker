@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import extract
 from typing import List, Optional
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from . import models
 from .database import SessionLocal, engine
 from .logging_config import setup_logging
@@ -142,6 +142,17 @@ class Plant(PlantBase):
 
 class SeedPacketBase(BaseModel):
     name: str
+    variety: Optional[str] = None
+    description: Optional[str] = None
+    planting_instructions: Optional[str] = None
+    days_to_germination: Optional[int] = None
+    spacing: Optional[str] = None
+    sun_exposure: Optional[str] = None
+    soil_type: Optional[str] = None
+    watering: Optional[str] = None
+    fertilizer: Optional[str] = None
+    package_weight: Optional[float] = None
+    expiration_date: Optional[date] = None
     quantity: int
     image_path: Optional[str] = None
 
@@ -160,10 +171,32 @@ class SeedPacketCreateForm:
     def __init__(
         self,
         name: str = Form(...),
+        variety: str = Form(None),
+        description: str = Form(None),
+        planting_instructions: str = Form(None),
+        days_to_germination: int = Form(None),
+        spacing: str = Form(None),
+        sun_exposure: str = Form(None),
+        soil_type: str = Form(None),
+        watering: str = Form(None),
+        fertilizer: str = Form(None),
+        package_weight: float = Form(None),
+        expiration_date: str = Form(None),
         quantity: int = Form(...),
         image: UploadFile = File(None)
     ):
         self.name = name
+        self.variety = variety
+        self.description = description
+        self.planting_instructions = planting_instructions
+        self.days_to_germination = days_to_germination
+        self.spacing = spacing
+        self.sun_exposure = sun_exposure
+        self.soil_type = soil_type
+        self.watering = watering
+        self.fertilizer = fertilizer
+        self.package_weight = package_weight
+        self.expiration_date = datetime.strptime(expiration_date, "%Y-%m-%d").date() if expiration_date else None
         self.quantity = quantity
         self.image = image
 
@@ -406,6 +439,17 @@ async def create_seed_packet(
     
     db_seed_packet = models.SeedPacket(
         name=form.name,
+        variety=form.variety,
+        description=form.description,
+        planting_instructions=form.planting_instructions,
+        days_to_germination=form.days_to_germination,
+        spacing=form.spacing,
+        sun_exposure=form.sun_exposure,
+        soil_type=form.soil_type,
+        watering=form.watering,
+        fertilizer=form.fertilizer,
+        package_weight=form.package_weight,
+        expiration_date=form.expiration_date,
         quantity=form.quantity,
         image_path=image_path
     )
@@ -450,6 +494,17 @@ def get_seed_packet(seed_packet_id: int, request: Request, db: Session = Depends
 async def update_seed_packet(
     seed_packet_id: int,
     name: str = Form(...),
+    variety: str = Form(None),
+    description: str = Form(None),
+    planting_instructions: str = Form(None),
+    days_to_germination: int = Form(None),
+    spacing: str = Form(None),
+    sun_exposure: str = Form(None),
+    soil_type: str = Form(None),
+    watering: str = Form(None),
+    fertilizer: str = Form(None),
+    package_weight: float = Form(None),
+    expiration_date: str = Form(None),
     quantity: int = Form(...),
     image: UploadFile = File(None),
     db: Session = Depends(get_db)
@@ -466,7 +521,19 @@ async def update_seed_packet(
         image_path = save_upload_file(image)
         db_seed_packet.image_path = image_path
     
+    # Update all fields
     db_seed_packet.name = name
+    db_seed_packet.variety = variety
+    db_seed_packet.description = description
+    db_seed_packet.planting_instructions = planting_instructions
+    db_seed_packet.days_to_germination = days_to_germination
+    db_seed_packet.spacing = spacing
+    db_seed_packet.sun_exposure = sun_exposure
+    db_seed_packet.soil_type = soil_type
+    db_seed_packet.watering = watering
+    db_seed_packet.fertilizer = fertilizer
+    db_seed_packet.package_weight = package_weight
+    db_seed_packet.expiration_date = datetime.strptime(expiration_date, "%Y-%m-%d").date() if expiration_date else None
     db_seed_packet.quantity = quantity
     
     db.commit()

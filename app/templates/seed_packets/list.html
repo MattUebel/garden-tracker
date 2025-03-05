@@ -11,19 +11,25 @@
 <div class="filter-section">
     <form class="filter-form" method="GET">
         <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="form-group">
                     <label for="name">Name</label>
                     <input type="text" class="form-control" id="name" name="name" value="{{ filters.get('name', '') }}">
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="form-group">
                     <label for="variety">Variety</label>
                     <input type="text" class="form-control" id="variety" name="variety" value="{{ filters.get('variety', '') }}">
                 </div>
             </div>
-            <div class="col-md-4 mt-4">
+            <div class="col-md-3">
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <input type="text" class="form-control" id="description" name="description" value="{{ filters.get('description', '') }}">
+                </div>
+            </div>
+            <div class="col-md-3 mt-4">
                 <button type="submit" class="btn btn-primary">Apply Filters</button>
                 <a href="/seed-packets" class="btn btn-secondary">Clear Filters</a>
             </div>
@@ -43,12 +49,14 @@
         <table class="table table-hover">
             <thead>
                 <tr>
-                    <th></th>
-                    <th>Name</th>
-                    <th>Variety</th>
+                    <th style="width: 80px"></th>
+                    <th style="min-width: 200px">Name</th>
+                    <th style="min-width: 150px">Variety</th>
+                    <th style="min-width: 250px">Description</th>
                     <th>Quantity</th>
+                    <th>Days to Germinate</th>
+                    <th>Expiration</th>
                     <th>Plants</th>
-                    <th>Created</th>
                 </tr>
             </thead>
             <tbody>
@@ -56,7 +64,7 @@
                 <tr data-href="/seed-packets/{{ packet.id }}">
                     <td>
                         {% if packet.image_path %}
-                        <img src="{{ packet.image_path }}" alt="{{ packet.name }}" style="max-width: 50px; max-height: 50px;">
+                        <img src="{{ packet.image_path }}" alt="{{ packet.name }}" class="img-thumbnail" style="max-width: 60px">
                         {% else %}
                         <div class="no-image-placeholder" style="width: 50px; height: 50px; font-size: 0.8rem; padding: 0.5rem;">
                             <i class="bi bi-image"></i>
@@ -65,13 +73,15 @@
                     </td>
                     <td>{{ packet.name }}</td>
                     <td>{{ packet.variety or '' }}</td>
+                    <td>{{ packet.description|truncate(100) if packet.description else '' }}</td>
                     <td>{{ packet.quantity }}</td>
+                    <td>{{ packet.days_to_germination }} days</td>
+                    <td>{{ packet.expiration_date.strftime('%Y-%m-%d') if packet.expiration_date else 'N/A' }}</td>
                     <td>
                         <a href="/plants?seed_packet_id={{ packet.id }}" onclick="event.stopPropagation();">
                             {{ packet.plants|length }} plants
                         </a>
                     </td>
-                    <td>{{ packet.created_at.strftime('%Y-%m-%d') }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -81,7 +91,7 @@
 
 <!-- Add Seed Packet Modal -->
 <div class="modal fade" id="addSeedPacketModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Add New Seed Packet</h5>
@@ -89,23 +99,74 @@
             </div>
             <div class="modal-body">
                 <form id="addSeedPacketForm" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="name" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="name" name="name" required>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Basic Information</h6>
+                            <div class="mb-3">
+                                <label for="name" class="form-label">Name</label>
+                                <input type="text" class="form-control" id="name" name="name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="variety" class="form-label">Variety</label>
+                                <input type="text" class="form-control" id="variety" name="variety">
+                            </div>
+                            <div class="mb-3">
+                                <label for="description" class="form-label">Description</label>
+                                <textarea class="form-control" id="description" name="description" rows="3" placeholder="A small, sweet tomato ideal for salads."></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="quantity" class="form-label">Quantity</label>
+                                <input type="number" class="form-control" id="quantity" name="quantity" required min="0">
+                            </div>
+                            <div class="mb-3">
+                                <label for="package_weight" class="form-label">Package Weight (g)</label>
+                                <input type="number" class="form-control" id="package_weight" name="package_weight" step="0.1" placeholder="50.0">
+                            </div>
+                            <div class="mb-3">
+                                <label for="expiration_date" class="form-label">Expiration Date</label>
+                                <input type="date" class="form-control" id="expiration_date" name="expiration_date">
+                            </div>
+                            <div class="mb-3">
+                                <label for="image" class="form-label">Image</label>
+                                <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Growing Information</h6>
+                            <div class="mb-3">
+                                <label for="planting_instructions" class="form-label">Planting Instructions</label>
+                                <textarea class="form-control" id="planting_instructions" name="planting_instructions" rows="3" placeholder="Sow indoors 6-8 weeks before last frost, transplant after danger of frost."></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="days_to_germination" class="form-label">Days to Germination</label>
+                                <input type="number" class="form-control" id="days_to_germination" name="days_to_germination" min="1" placeholder="7">
+                            </div>
+                            <div class="mb-3">
+                                <label for="spacing" class="form-label">Spacing</label>
+                                <input type="text" class="form-control" id="spacing" name="spacing" placeholder="18-24 inches apart">
+                            </div>
+                            <div class="mb-3">
+                                <label for="sun_exposure" class="form-label">Sun Exposure</label>
+                                <input type="text" class="form-control" id="sun_exposure" name="sun_exposure" placeholder="Full sun">
+                            </div>
+                            <div class="mb-3">
+                                <label for="soil_type" class="form-label">Soil Type</label>
+                                <input type="text" class="form-control" id="soil_type" name="soil_type" placeholder="Well-draining, fertile soil">
+                            </div>
+                            <div class="mb-3">
+                                <label for="watering" class="form-label">Watering</label>
+                                <input type="text" class="form-control" id="watering" name="watering" placeholder="Keep soil consistently moist, not waterlogged">
+                            </div>
+                            <div class="mb-3">
+                                <label for="fertilizer" class="form-label">Fertilizer</label>
+                                <input type="text" class="form-control" id="fertilizer" name="fertilizer" placeholder="Apply balanced fertilizer every 2 weeks after germination">
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="variety" class="form-label">Variety</label>
-                        <input type="text" class="form-control" id="variety" name="variety">
+                    <div class="text-end mt-3">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Seed Packet</button>
                     </div>
-                    <div class="mb-3">
-                        <label for="quantity" class="form-label">Quantity</label>
-                        <input type="number" class="form-control" id="quantity" name="quantity" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="image" class="form-label">Image</label>
-                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Create Seed Packet</button>
                 </form>
             </div>
         </div>

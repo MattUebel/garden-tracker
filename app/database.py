@@ -32,9 +32,12 @@ def get_database_url():
     
     return f"postgresql://{user}:{password}@{host}:5432/{db}"
 
+# Expose the database URL for migrations
+SQLALCHEMY_DATABASE_URL = get_database_url()
+
 # Configure SQLAlchemy engine with retry logic
 engine = create_engine(
-    get_database_url(),
+    SQLALCHEMY_DATABASE_URL,
     pool_pre_ping=True,  # Enable connection health checks
 )
 
