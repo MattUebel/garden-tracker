@@ -47,20 +47,19 @@ if ! docker compose ps --status running | grep -q "app"; then
     sleep 10
 fi
 
-# Run database migrations with fallback for existing tables
+# Run database migrations with proper version control
 echo "Running database migrations..."
-if ! docker compose exec app alembic upgrade head; then
-    echo "Initial migration failed, attempting to stamp current version..."
-    if ! docker compose exec app alembic stamp head; then
-        echo "Error stamping database version"
-        exit 1
-    fi
-    echo "Database version stamped, retrying migrations..."
-    if ! docker compose exec app alembic upgrade head; then
-        echo "Error running migrations after stamp"
-        exit 1
-    fi
-fi
+echo "1. Reset migration tracking..."
+docker compose exec app alembic stamp base || {
+    echo "Error resetting migration version"
+    exit 1
+}
+
+echo "2. Running all migrations..."
+docker compose exec app alembic upgrade head || {
+    echo "Error running migrations"
+    exit 1
+}
 
 # Start the service (which will rebuild due to --build flag in setup)
 echo "Starting service..."
