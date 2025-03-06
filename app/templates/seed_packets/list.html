@@ -50,12 +50,9 @@
             <thead>
                 <tr>
                     <th style="width: 80px"></th>
-                    <th style="min-width: 200px">Name</th>
-                    <th style="min-width: 150px">Variety</th>
-                    <th style="min-width: 250px">Description</th>
+                    <th>Name</th>
+                    <th>Variety</th>
                     <th>Quantity</th>
-                    <th>Days to Germinate</th>
-                    <th>Expiration</th>
                     <th>Plants</th>
                     <th>Actions</th>
                 </tr>
@@ -74,10 +71,7 @@
                     </td>
                     <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.name }}</td>
                     <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.variety or '' }}</td>
-                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.description|truncate(100) if packet.description else '' }}</td>
                     <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.quantity }}</td>
-                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.days_to_germination }} days</td>
-                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.expiration_date.strftime('%Y-%m-%d') if packet.expiration_date else 'N/A' }}</td>
                     <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">
                         <a href="/plants?seed_packet_id={{ packet.id }}" onclick="event.stopPropagation();">
                             {{ packet.plants|length }} plants
@@ -85,13 +79,13 @@
                     </td>
                     <td>
                         <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="showEditModal(JSON.parse('{{ packet|tojson|safe }}'))">
+                            <button class="btn btn-sm btn-outline-primary" onclick='showEditModal({{ packet|tojson|safe }})'>
                                 <i class="bi bi-pencil"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-success" onclick="duplicateSeedPacket('{{ packet.id }}')">
+                            <button class="btn btn-sm btn-outline-success" onclick="duplicateSeedPacket({{ packet.id }})">
                                 <i class="bi bi-files"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSeedPacket('{{ packet.id }}')">
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSeedPacket({{ packet.id }})">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>
@@ -189,7 +183,7 @@
 
 <!-- Edit Seed Packet Modal -->
 <div class="modal fade" id="editSeedPacketModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Edit Seed Packet</h5>
@@ -198,28 +192,80 @@
             <div class="modal-body">
                 <form id="editSeedPacketForm" enctype="multipart/form-data">
                     <input type="hidden" id="edit_id" name="id">
-                    <div class="mb-3">
-                        <label for="edit_name" class="form-label">Name</label>
-                        <input type="text" class="form-control" id="edit_name" name="name" required>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Basic Information</h6>
+                            <div class="mb-3">
+                                <label for="edit_name" class="form-label">Name</label>
+                                <input type="text" class="form-control" id="edit_name" name="name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_variety" class="form-label">Variety</label>
+                                <input type="text" class="form-control" id="edit_variety" name="variety">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_description" class="form-label">Description</label>
+                                <textarea class="form-control" id="edit_description" name="description" rows="3"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_quantity" class="form-label">Quantity</label>
+                                <input type="number" class="form-control" id="edit_quantity" name="quantity" required min="0">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_package_weight" class="form-label">Package Weight (g)</label>
+                                <input type="number" class="form-control" id="edit_package_weight" name="package_weight" step="0.1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_expiration_date" class="form-label">Expiration Date</label>
+                                <input type="date" class="form-control" id="edit_expiration_date" name="expiration_date">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_image" class="form-label">Image</label>
+                                <input type="file" class="form-control" id="edit_image" name="image" accept="image/*">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Growing Information</h6>
+                            <div class="mb-3">
+                                <label for="edit_planting_instructions" class="form-label">Planting Instructions</label>
+                                <textarea class="form-control" id="edit_planting_instructions" name="planting_instructions" rows="3"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_days_to_germination" class="form-label">Days to Germination</label>
+                                <input type="number" class="form-control" id="edit_days_to_germination" name="days_to_germination" min="1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_spacing" class="form-label">Spacing</label>
+                                <input type="text" class="form-control" id="edit_spacing" name="spacing">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_sun_exposure" class="form-label">Sun Exposure</label>
+                                <input type="text" class="form-control" id="edit_sun_exposure" name="sun_exposure">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_soil_type" class="form-label">Soil Type</label>
+                                <input type="text" class="form-control" id="edit_soil_type" name="soil_type">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_watering" class="form-label">Watering</label>
+                                <input type="text" class="form-control" id="edit_watering" name="watering">
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_fertilizer" class="form-label">Fertilizer</label>
+                                <input type="text" class="form-control" id="edit_fertilizer" name="fertilizer">
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="edit_variety" class="form-label">Variety</label>
-                        <input type="text" class="form-control" id="edit_variety" name="variety">
+                    <div class="text-end mt-3">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
                     </div>
-                    <div class="mb-3">
-                        <label for="edit_quantity" class="form-label">Quantity</label>
-                        <input type="number" class="form-control" id="edit_quantity" name="quantity" required min="0">
-                    </div>
-                    <div class="mb-3">
-                        <label for="edit_image" class="form-label">Image</label>
-                        <input type="file" class="form-control" id="edit_image" name="image" accept="image/*">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Save Changes</button>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -253,8 +299,15 @@
         document.getElementById('edit_variety').value = packet.variety || '';
         document.getElementById('edit_description').value = packet.description || '';
         document.getElementById('edit_quantity').value = packet.quantity;
-        document.getElementById('edit_days_to_germination').value = packet.days_to_germination || '';
+        document.getElementById('edit_package_weight').value = packet.package_weight || '';
         document.getElementById('edit_expiration_date').value = packet.expiration_date ? packet.expiration_date.split('T')[0] : '';
+        document.getElementById('edit_planting_instructions').value = packet.planting_instructions || '';
+        document.getElementById('edit_days_to_germination').value = packet.days_to_germination || '';
+        document.getElementById('edit_spacing').value = packet.spacing || '';
+        document.getElementById('edit_sun_exposure').value = packet.sun_exposure || '';
+        document.getElementById('edit_soil_type').value = packet.soil_type || '';
+        document.getElementById('edit_watering').value = packet.watering || '';
+        document.getElementById('edit_fertilizer').value = packet.fertilizer || '';
         
         const editModal = new bootstrap.Modal(document.getElementById('editSeedPacketModal'));
         editModal.show();

@@ -4,9 +4,10 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import extract
-from typing import List, Optional
+from typing import List, Optional, ForwardRef
 import logging
 from datetime import datetime, date
+import json
 from . import models
 from .database import SessionLocal, engine
 from .logging_config import setup_logging
@@ -23,11 +24,24 @@ logger = setup_logging()
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
+# Custom JSON encoder for SQLAlchemy models
+class SQLAlchemyJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if hasattr(obj, '__dict__'):
+            return obj.__dict__
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
+
+def custom_json_dumps(obj, **kwargs):
+    return json.dumps(obj, cls=SQLAlchemyJSONEncoder, **kwargs)
+
 app = FastAPI(title="Garden Tracker API")
 
-# Mount static files and templates
+# Mount static files and templates with custom JSON encoder
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+templates.env.policies['json.dumps_function'] = custom_json_dumps
 
 # Exception handlers
 @app.exception_handler(GardenBaseException)
@@ -121,51 +135,21 @@ def get_db():
     finally:
         db.close()
 
-# Pydantic models for request/response
-class PlantBase(BaseModel):
-    name: str
-    variety: Optional[str] = None
-    planting_method: PlantingMethod
-    seed_packet_id: Optional[int] = None
-
-class PlantCreate(PlantBase):
-    pass
-
-class Plant(PlantBase):
-    id: int
-    year_id: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        orm_mode = True
-
-class SeedPacketBase(BaseModel):
-    name: str
-    variety: Optional[str] = None
-    description: Optional[str] = None
-    planting_instructions: Optional[str] = None
-    days_to_germination: Optional[int] = None
-    spacing: Optional[str] = None
-    sun_exposure: Optional[str] = None
-    soil_type: Optional[str] = None
-    watering: Optional[str] = None
-    fertilizer: Optional[str] = None
-    package_weight: Optional[float] = None
-    expiration_date: Optional[date] = None
-    quantity: int
-    image_path: Optional[str] = None
-
-class SeedPacketCreate(SeedPacketBase):
-    pass
-
-class SeedPacket(SeedPacketBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        orm_mode = True
+# Form classes first
+class NoteCreateForm:
+    def __init__(
+        self,
+        body: str = Form(...),
+        image: UploadFile = File(None),
+        plant_id: Optional[int] = Form(None),
+        seed_packet_id: Optional[int] = Form(None),
+        garden_supply_id: Optional[int] = Form(None)
+    ):
+        self.body = body
+        self.image = image
+        self.plant_id = plant_id
+        self.seed_packet_id = seed_packet_id
+        self.garden_supply_id = garden_supply_id
 
 class SeedPacketCreateForm:
     def __init__(
@@ -196,25 +180,9 @@ class SeedPacketCreateForm:
         self.watering = watering
         self.fertilizer = fertilizer
         self.package_weight = package_weight
-        self.expiration_date = datetime.strptime(expiration_date, "%Y-%m-%d").date() if expiration_date else None
+        self.expiration_date = datetime.strptime(expiration_date, "%Y-%m-%d").date() if expiration_date else None 
         self.quantity = quantity
         self.image = image
-
-class GardenSupplyBase(BaseModel):
-    name: str
-    description: Optional[str] = None
-    image_path: Optional[str] = None
-
-class GardenSupplyCreate(GardenSupplyBase):
-    pass
-
-class GardenSupply(GardenSupplyBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        orm_mode = True
 
 class GardenSupplyCreateForm:
     def __init__(
@@ -226,6 +194,17 @@ class GardenSupplyCreateForm:
         self.name = name
         self.description = description
         self.image = image
+
+# Forward references for circular dependencies
+PlantRef = ForwardRef('Plant')
+NoteRef = ForwardRef('Note')
+
+# Pydantic models with updated config
+class Year(BaseModel):
+    year: int
+
+    class Config:
+        from_attributes = True
 
 class NoteBase(BaseModel):
     body: str
@@ -242,22 +221,78 @@ class Note(NoteBase):
     timestamp: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-class NoteCreateForm:
-    def __init__(
-        self,
-        body: str = Form(...),
-        image: UploadFile = File(None),
-        plant_id: Optional[int] = Form(None),
-        seed_packet_id: Optional[int] = Form(None),
-        garden_supply_id: Optional[int] = Form(None)
-    ):
-        self.body = body
-        self.image = image
-        self.plant_id = plant_id
-        self.seed_packet_id = seed_packet_id
-        self.garden_supply_id = garden_supply_id
+class PlantBase(BaseModel):
+    name: str
+    variety: Optional[str] = None
+    planting_method: PlantingMethod
+    seed_packet_id: Optional[int] = None
+
+class PlantCreate(PlantBase):
+    pass
+
+class Plant(PlantBase):
+    id: int
+    year_id: int
+    created_at: datetime
+    updated_at: datetime 
+    year: Year
+
+    class Config:
+        from_attributes = True
+
+class SeedPacketBase(BaseModel):
+    name: str
+    variety: Optional[str] = None
+    description: Optional[str] = None
+    planting_instructions: Optional[str] = None
+    days_to_germination: Optional[int] = None
+    spacing: Optional[str] = None
+    sun_exposure: Optional[str] = None
+    soil_type: Optional[str] = None
+    watering: Optional[str] = None
+    fertilizer: Optional[str] = None
+    package_weight: Optional[float] = None
+    expiration_date: Optional[date] = None
+    quantity: int
+    image_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class SeedPacketCreate(SeedPacketBase):
+    pass
+
+class SeedPacket(SeedPacketBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    plants: List[PlantRef]
+    notes: List[NoteRef]
+
+    class Config:
+        from_attributes = True
+
+# Update forward refs
+Plant.update_forward_refs()
+SeedPacket.update_forward_refs()
+
+class GardenSupplyBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    image_path: Optional[str] = None
+
+class GardenSupplyCreate(GardenSupplyBase):
+    pass
+
+class GardenSupply(GardenSupplyBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class HarvestBase(BaseModel):
     weight_oz: float
@@ -271,23 +306,17 @@ class Harvest(HarvestBase):
     timestamp: datetime
 
     class Config:
-        orm_mode = True
-
-class Year(BaseModel):
-    year: int
-
-    class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Root endpoint
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: Session = Depends(get_db)):
     try:
-        # Get summary data for the dashboard
-        plants = db.query(models.Plant).order_by(models.Plant.created_at.desc()).limit(5).all()
-        notes = db.query(models.Note).order_by(models.Note.timestamp.desc()).limit(5).all()
-        seed_packets = db.query(models.SeedPacket).order_by(models.SeedPacket.created_at.desc()).limit(5).all()
-        supplies = db.query(models.GardenSupply).order_by(models.GardenSupply.created_at.desc()).limit(5).all()
+        # Get summary data and convert to Pydantic models
+        plants = [Plant.from_orm(p) for p in db.query(models.Plant).order_by(models.Plant.created_at.desc()).limit(5).all()]
+        notes = [Note.from_orm(n) for n in db.query(models.Note).order_by(models.Note.timestamp.desc()).limit(5).all()]
+        seed_packets = [SeedPacket.from_orm(sp) for sp in db.query(models.SeedPacket).order_by(models.SeedPacket.created_at.desc()).limit(5).all()]
+        supplies = [GardenSupply.from_orm(s) for s in db.query(models.GardenSupply).order_by(models.GardenSupply.created_at.desc()).limit(5).all()]
         
         logger.info("Loading home dashboard")
         return templates.TemplateResponse(
@@ -784,19 +813,23 @@ def create_year(year: Year, db: Session = Depends(get_db)):
 # Note endpoints
 @app.post("/notes/", response_model=Note)
 async def create_note(
-    form: NoteCreateForm = Depends(),
+    body: str = Form(...),
+    image: UploadFile = File(None),
+    plant_id: Optional[int] = Form(None),
+    seed_packet_id: Optional[int] = Form(None),
+    garden_supply_id: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
     image_path = None
-    if form.image and form.image.filename:  # Check both that image exists and has a filename
-        image_path = save_upload_file(form.image)
+    if image and image.filename:
+        image_path = save_upload_file(image)
     
     db_note = models.Note(
-        body=form.body,
+        body=body,
         image_path=image_path,
-        plant_id=form.plant_id,
-        seed_packet_id=form.seed_packet_id,
-        garden_supply_id=form.garden_supply_id
+        plant_id=plant_id,
+        seed_packet_id=seed_packet_id,
+        garden_supply_id=garden_supply_id
     )
     db.add(db_note)
     db.commit()
@@ -1094,7 +1127,10 @@ async def garden_supplies_page(
     query = db.query(models.GardenSupply)
     filters = {"name": name, "category": category}
     query = apply_filters(query, models.GardenSupply, filters)
-    supplies = query.order_by(models.GardenSupply.name).all()
+    db_supplies = query.order_by(models.GardenSupply.name).all()
+    
+    # Convert SQLAlchemy models to Pydantic models for proper JSON serialization
+    supplies = [GardenSupply.from_orm(supply) for supply in db_supplies]
     
     return templates.TemplateResponse(
         "garden_supplies/list.html",
