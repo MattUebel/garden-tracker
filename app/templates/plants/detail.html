@@ -225,7 +225,10 @@
     document.getElementById('addHarvestForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
-        const data = Object.fromEntries(formData.entries());
+        const data = {
+            plant_id: parseInt(formData.get('plant_id')),
+            weight_oz: parseFloat(formData.get('weight_oz'))
+        };
         
         try {
             const response = await fetch('/harvests/', {
@@ -236,11 +239,13 @@
                 body: JSON.stringify(data)
             });
             
-            if (response.ok) {
-                window.location.reload();
-            } else {
-                alert('Error adding harvest');
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error?.message || 'Error adding harvest');
+                return;
             }
+            
+            window.location.reload();
         } catch (error) {
             console.error('Error:', error);
             alert('Error adding harvest');

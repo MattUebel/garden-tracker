@@ -153,7 +153,10 @@
     document.getElementById('addHarvestForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
-        const data = Object.fromEntries(formData.entries());
+        const data = {
+            plant_id: parseInt(formData.get('plant_id')),
+            weight_oz: parseFloat(formData.get('weight_oz'))
+        };
         
         try {
             const response = await fetch('/harvests/', {
@@ -161,17 +164,16 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    plant_id: parseInt(data.plant_id),
-                    weight_oz: parseFloat(data.weight_oz)
-                })
+                body: JSON.stringify(data)
             });
             
-            if (response.ok) {
-                window.location.reload();
-            } else {
-                alert('Error creating harvest');
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error?.message || 'Error creating harvest');
+                return;
             }
+            
+            window.location.reload();
         } catch (error) {
             console.error('Error:', error);
             alert('Error creating harvest');
