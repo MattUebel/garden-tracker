@@ -253,7 +253,7 @@
                     </div>
                     <div class="text-end mt-3">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Create Seed Packet</button>
+                        <button type="button" class="btn btn-primary" onclick="submitSeedPacketForm()">Create Seed Packet</button>
                     </div>
                 </form>
             </div>
@@ -340,27 +340,27 @@
         }
     });
 
-    // Add Seed Packet Form Handler
-    document.getElementById('addSeedPacketForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
+    // Add Seed Packet Form submission function
+    function submitSeedPacketForm() {
+        const form = document.getElementById('addSeedPacketForm');
+        const formData = new FormData(form);
         
-        try {
-            const response = await fetch('/seed-packets/', {
-                method: 'POST',
-                body: formData
-            });
-            
+        fetch('/seed-packets/', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
             if (response.ok) {
                 window.location.reload();
             } else {
                 alert('Error adding seed packet');
             }
-        } catch (error) {
+        })
+        .catch(error => {
             console.error('Error:', error);
             alert('Error adding seed packet');
-        }
-    });
+        });
+    }
 
     // Add Garden Supply Form Handler
     document.getElementById('addSupplyForm').addEventListener('submit', async function(e) {
