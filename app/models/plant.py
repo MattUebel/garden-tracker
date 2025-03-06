@@ -31,7 +31,7 @@ class Plant(Base):
     seed_packet = relationship("SeedPacket", backref="plants")
     garden_supplies = relationship("GardenSupply", secondary="plant_supplies", backref="plants")
     notes = relationship("Note", backref="plant")
-    harvests = relationship("Harvest", backref="plant")
+    harvests = relationship("Harvest", back_populates="plant")
     
     def __repr__(self):
         return f"<Plant {self.name}>"
