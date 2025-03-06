@@ -28,7 +28,17 @@ models.Base.metadata.create_all(bind=engine)
 class SQLAlchemyJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if hasattr(obj, '__dict__'):
-            return obj.__dict__
+            # Get the dictionary of attributes
+            data = {}
+            for key, value in obj.__dict__.items():
+                if not key.startswith('_'):  # Skip SQLAlchemy internal attributes
+                    try:
+                        json.dumps(value)  # Test if value is JSON serializable
+                        data[key] = value
+                    except (TypeError, OverflowError):
+                        # If value is not JSON serializable, convert it to string
+                        data[key] = str(value)
+            return data
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
         return super().default(obj)
