@@ -771,6 +771,51 @@ async def process_seed_packet_ocr(
                     "image_url": f"data:image/{image_format};base64,{base64_image}"
                 }
             )
+            
+            # Extract OCR text from the response based on the structure:
+            # {
+            #   "pages": [
+            #     {
+            #       "index": 0,
+            #       "markdown": "string",
+            #       ...
+            #     }
+            #   ],
+            #   ...
+            # }
+            
+            # Convert response to a dictionary to handle the JSON structure
+            response_dict = None
+            if hasattr(ocr_response, 'model_dump'):
+                # For Pydantic models
+                response_dict = ocr_response.model_dump()
+            elif hasattr(ocr_response, '__dict__'):
+                # For regular objects
+                response_dict = ocr_response.__dict__
+            else:
+                # Try to convert directly to dict if it's a JSON response
+                import json
+                try:
+                    response_dict = json.loads(str(ocr_response))
+                except:
+                    response_dict = {"error": "Could not parse response"}
+            
+            logger.info(f"Response dictionary: {response_dict}")
+            
+            # Extract the markdown text from the pages
+            ocr_text = ""
+            if isinstance(response_dict, dict) and "pages" in response_dict:
+                for page in response_dict["pages"]:
+                    if "markdown" in page:
+                        if ocr_text:
+                            ocr_text += "\n\n"
+                        ocr_text += page["markdown"]
+            else:
+                # Fallback to string representation if we can't extract text
+                ocr_text = str(ocr_response)
+            
+            logger.info(f"Extracted OCR text: {ocr_text[:100]}...")  # Log first 100 chars
+            
         except FileNotFoundError:
             logger.error(f"Image file not found: {image_path}")
             return JSONResponse(
@@ -785,7 +830,6 @@ async def process_seed_packet_ocr(
             )
 
         # Create a note with the OCR results
-        ocr_text = ocr_response.results.text
         note_body = f"OCR Results:\n\n{ocr_text}"
         
         db_note = models.Note(
