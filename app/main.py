@@ -721,11 +721,32 @@ async def process_seed_packet_ocr(
         # Initialize Mistral client
         client = Mistral(api_key=api_key)
 
-        # Get the actual file path for the image instead of URL
-        image_rel_path = seed_packet.image_path.lstrip("/")
-        image_path = f"app/static/{image_rel_path}"
+        # Clean up the image path - it might start with "/" or "static/"
+        image_path = seed_packet.image_path
+        # Remove initial '/' if present
+        if image_path.startswith('/'):
+            image_path = image_path[1:]
+        # Add "app/" prefix if not already there and if it doesn't start with "static/"
+        if not image_path.startswith('app/'):
+            if image_path.startswith('static/'):
+                image_path = f"app/{image_path}"
+            else:
+                image_path = f"app/static/{image_path}"
         
         logger.info(f"Processing OCR for seed packet image: {image_path}")
+        
+        # Print debug info
+        import os
+        if os.path.exists(image_path):
+            logger.info(f"Image file exists at {image_path}")
+        else:
+            logger.error(f"Image file does not exist at {image_path}")
+            # Try to list the directory to see what's there
+            dir_path = os.path.dirname(image_path)
+            if os.path.exists(dir_path):
+                logger.info(f"Contents of {dir_path}: {os.listdir(dir_path)}")
+            else:
+                logger.error(f"Directory {dir_path} does not exist")
 
         # Base64 encode the image
         import base64
@@ -754,7 +775,7 @@ async def process_seed_packet_ocr(
             logger.error(f"Image file not found: {image_path}")
             return JSONResponse(
                 status_code=500, 
-                content={"error": f"Image file not found: {image_rel_path}"}
+                content={"error": f"Image file not found: {image_path}"}
             )
         except Exception as e:
             logger.error(f"Error processing image: {str(e)}")
