@@ -985,7 +985,9 @@ async def plants_page(
     if supply_id:
         query = query.filter(models.Plant.supplies.any(id=supply_id))
     
-    plants = query.order_by(models.Plant.name).all()
+    db_plants = query.order_by(models.Plant.name).all()
+    plants = [Plant.from_orm(plant) for plant in db_plants]
+    
     years = db.query(models.Year).order_by(models.Year.year.desc()).all()
     seed_packets = db.query(models.SeedPacket).order_by(models.SeedPacket.name).all()
     supplies = db.query(models.GardenSupply).order_by(models.GardenSupply.name).all()
@@ -1040,7 +1042,10 @@ async def seed_packets_page(
     query = db.query(models.SeedPacket)
     filters = {"name": name, "variety": variety}
     query = apply_filters(query, models.SeedPacket, filters)
-    seed_packets = query.order_by(models.SeedPacket.name).all()
+    db_seed_packets = query.order_by(models.SeedPacket.name).all()
+    
+    # Convert SQLAlchemy models to Pydantic models for proper JSON serialization
+    seed_packets = [SeedPacket.from_orm(packet) for packet in db_seed_packets]
     
     return templates.TemplateResponse(
         "seed_packets/list.html",
