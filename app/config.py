@@ -45,6 +45,10 @@ def get_mistral_api_key():
     api_key = os.getenv('MISTRAL_API_KEY')
     return api_key  # Can be None, will be checked when OCR feature is used
 
+# Mistral API configuration
+MISTRAL_OCR_MODEL = "mistral-ocr-latest"
+MISTRAL_CHAT_MODEL = os.getenv('MISTRAL_CHAT_MODEL', 'mistral-small-latest')
+
 # Function to validate essential configuration at startup
 def validate_configuration():
     """Validate all required configuration settings and exit if critical ones are missing."""

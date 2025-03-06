@@ -107,6 +107,34 @@
             </div>
             <div class="modal-body">
                 <form id="addSeedPacketForm" enctype="multipart/form-data">
+                    <!-- New Enhanced Image Upload with OCR Section -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0">Quick Setup - Upload Photo and Extract Info</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="image" class="form-label">Upload Seed Packet Image</label>
+                                        <input type="file" class="form-control" id="image" name="image" accept="image/*">
+                                        <div class="form-text">Upload a clear image of the seed packet to automatically extract information</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 d-flex align-items-end">
+                                    <button type="button" id="extractInfoBtn" class="btn btn-info mb-3">
+                                        <i class="bi bi-magic"></i> Extract Info from Image
+                                        <span id="extractSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="imagePreview" class="mt-2 d-none">
+                                <img id="seedPacketImagePreview" class="img-thumbnail" style="max-height: 200px;">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Existing form content -->
                     <div class="row">
                         <div class="col-md-6">
                             <h6 class="mb-3">Basic Information</h6>
@@ -289,6 +317,103 @@
         } catch (error) {
             console.error('Error:', error);
             alert('Error creating seed packet');
+        }
+    });
+
+    // Image preview functionality
+    document.getElementById('image').addEventListener('change', function() {
+        const file = this.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const preview = document.getElementById('seedPacketImagePreview');
+                preview.src = e.target.result;
+                document.getElementById('imagePreview').classList.remove('d-none');
+            }
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Extract info from image button handler
+    document.getElementById('extractInfoBtn').addEventListener('click', async function() {
+        const fileInput = document.getElementById('image');
+        if (!fileInput.files || fileInput.files.length === 0) {
+            alert('Please select an image file first');
+            return;
+        }
+
+        // Show spinner and disable button
+        const spinner = document.getElementById('extractSpinner');
+        this.disabled = true;
+        spinner.classList.remove('d-none');
+
+        try {
+            const formData = new FormData();
+            formData.append('image', fileInput.files[0]);
+
+            // First upload the image and process OCR
+            const ocrResponse = await fetch('/seed-packets/upload-and-ocr', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!ocrResponse.ok) {
+                const errorData = await ocrResponse.json();
+                throw new Error(errorData.error || 'OCR processing failed');
+            }
+
+            const ocrData = await ocrResponse.json();
+            
+            // Show success message
+            console.log('OCR Successful:', ocrData);
+
+            // Now extract structured data from the OCR text
+            const extractFormData = new FormData();
+            extractFormData.append('ocr_text', ocrData.ocr_text);
+
+            const extractResponse = await fetch('/seed-packets/extract-data-temp', {
+                method: 'POST',
+                body: extractFormData
+            });
+
+            if (!extractResponse.ok) {
+                const errorData = await extractResponse.json();
+                throw new Error(errorData.error || 'Data extraction failed');
+            }
+
+            // Get the structured data
+            const extractedData = await extractResponse.json();
+            console.log('Extracted data:', extractedData);
+
+            // Fill in the form fields with the extracted data
+            document.getElementById('name').value = extractedData.name || '';
+            document.getElementById('variety').value = extractedData.variety || '';
+            document.getElementById('description').value = extractedData.description || '';
+            document.getElementById('package_weight').value = extractedData.package_weight || '';
+            document.getElementById('expiration_date').value = extractedData.expiration_date || '';
+            document.getElementById('planting_instructions').value = extractedData.planting_instructions || '';
+            document.getElementById('days_to_germination').value = extractedData.days_to_germination || '';
+            document.getElementById('spacing').value = extractedData.spacing || '';
+            document.getElementById('sun_exposure').value = extractedData.sun_exposure || '';
+            document.getElementById('soil_type').value = extractedData.soil_type || '';
+            document.getElementById('watering').value = extractedData.watering || '';
+            document.getElementById('fertilizer').value = extractedData.fertilizer || '';
+
+            // Set a default quantity if no value is set
+            if (!document.getElementById('quantity').value) {
+                document.getElementById('quantity').value = '1';
+            }
+
+            // Show success message
+            alert('Information extracted successfully! Please review and make any necessary adjustments before saving.');
+            
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error extracting information: ' + error.message);
+        } finally {
+            // Hide spinner and re-enable button
+            this.disabled = false;
+            spinner.classList.add('d-none');
         }
     });
 

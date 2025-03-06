@@ -19,9 +19,9 @@ from .utils import save_upload_file, delete_upload_file, apply_filters
 from .models.plant import PlantingMethod
 
 # Import configuration
-from .config import get_mistral_api_key, DEBUG, UPLOAD_FOLDER
+from .config import get_mistral_api_key, DEBUG, UPLOAD_FOLDER, MISTRAL_OCR_MODEL, MISTRAL_CHAT_MODEL
 
-# Import MistralAI for OCR
+# Import MistralAI for OCR and chat completion
 from mistralai import Mistral
 
 # Setup logging
@@ -858,6 +858,323 @@ async def process_seed_packet_ocr(
         return JSONResponse(
             status_code=500,
             content={"error": f"OCR processing failed: {str(e)}"}
+        )
+
+# Extract structured data from OCR results
+@app.post("/seed-packets/{seed_packet_id}/extract-data")
+async def extract_data_from_ocr(
+    seed_packet_id: int,
+    request: Request,
+    ocr_text: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        seed_packet = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
+        if seed_packet is None:
+            raise ResourceNotFoundException("Seed Packet", seed_packet_id)
+
+        # Get the API key from configuration
+        api_key = get_mistral_api_key()
+        if not api_key:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "MISTRAL_API_KEY not set in environment"}
+            )
+
+        # Initialize Mistral client
+        client = Mistral(api_key=api_key)
+
+        # Define prompt to extract structured data
+        prompt = f"""
+Extract structured information from the following seed packet text.
+The text was obtained from OCR and may have formatting issues or errors.
+Please extract the following fields if they are present in the text:
+
+- name: The name of the plant/seed (e.g., 'Tomato', 'Basil', 'Carrot')
+- variety: The specific variety (e.g., 'Roma', 'Sweet Thai', 'Nantes')
+- description: A brief description of the plant
+- planting_instructions: Instructions on how to plant
+- days_to_germination: The number of days it takes to germinate (just the number)
+- spacing: Recommended spacing between plants
+- sun_exposure: Light requirements (e.g., 'Full Sun', 'Partial Shade')
+- soil_type: Soil preferences
+- watering: Watering requirements
+- fertilizer: Fertilizer recommendations
+- package_weight: The weight of the seed packet (just the number in grams)
+- expiration_date: Date format YYYY-MM-DD if present
+
+Return ONLY a JSON object with these fields. If information for a field is not available, use null.
+
+Here's the OCR text from the seed packet:
+
+{ocr_text}
+"""
+
+        # Create chat completion request
+        messages = [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+
+        # Get the chat response
+        logger.info(f"Sending chat completion request for seed packet {seed_packet_id}")
+        chat_response = client.chat.complete(
+            model=MISTRAL_CHAT_MODEL,
+            messages=messages
+        )
+
+        # Extract the response content
+        response_content = chat_response.choices[0].message.content
+        logger.info(f"Received chat completion response: {response_content[:100]}...")
+
+        # Parse the JSON response
+        import json
+        try:
+            extracted_data = json.loads(response_content)
+            
+            # Clean up and validate the data
+            if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
+                try:
+                    extracted_data["days_to_germination"] = int(extracted_data["days_to_germination"])
+                except (ValueError, TypeError):
+                    extracted_data["days_to_germination"] = None
+            
+            if "package_weight" in extracted_data and extracted_data["package_weight"]:
+                try:
+                    extracted_data["package_weight"] = float(extracted_data["package_weight"])
+                except (ValueError, TypeError):
+                    extracted_data["package_weight"] = None
+            
+            # Format dates properly
+            if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
+                # Simple validation to check if it matches YYYY-MM-DD format
+                import re
+                if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
+                    extracted_data["expiration_date"] = None
+                    
+            return JSONResponse(content=extracted_data)
+        except json.JSONDecodeError:
+            logger.error("Failed to parse JSON from chat completion response")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Failed to parse structured data from response"}
+            )
+            
+    except Exception as e:
+        logger.exception(f"Error extracting structured data", extra={"seed_packet_id": seed_packet_id})
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Data extraction failed: {str(e)}"}
+        )
+
+# New endpoint for uploading an image and processing it with OCR immediately
+@app.post("/seed-packets/upload-and-ocr")
+async def upload_and_ocr_image(
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Upload a seed packet image and process it with OCR in one step"""
+    try:
+        # Check if Mistral API key is available
+        api_key = get_mistral_api_key()
+        if not api_key:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "MISTRAL_API_KEY not set in environment"}
+            )
+
+        # First, save the uploaded image
+        image_path = save_upload_file(image)
+        if not image_path:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Failed to save uploaded image"}
+            )
+
+        # Initialize Mistral client
+        client = Mistral(api_key=api_key)
+
+        # Clean up the image path for processing
+        processed_image_path = image_path
+        if processed_image_path.startswith('/'):
+            processed_image_path = processed_image_path[1:]
+        
+        # Add "app/" prefix if not already there
+        if not processed_image_path.startswith('app/'):
+            processed_image_path = f"app/{processed_image_path}"
+        
+        logger.info(f"Processing OCR for uploaded image: {processed_image_path}")
+
+        # Base64 encode the image for OCR
+        import base64
+        with open(processed_image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            
+        # Determine image format from the file extension
+        image_format = "jpeg"  # Default format
+        if processed_image_path.lower().endswith(".png"):
+            image_format = "png"
+        elif processed_image_path.lower().endswith(".gif"):
+            image_format = "gif"
+        elif processed_image_path.lower().endswith((".jpg", ".jpeg")):
+            image_format = "jpeg"
+
+        # Process with OCR
+        ocr_response = client.ocr.process(
+            model=MISTRAL_OCR_MODEL,
+            document={
+                "type": "image_url",
+                "image_url": f"data:image/{image_format};base64,{base64_image}"
+            }
+        )
+        
+        # Extract OCR text
+        ocr_text = ""
+        response_dict = None
+        if hasattr(ocr_response, 'model_dump'):
+            response_dict = ocr_response.model_dump()
+        elif hasattr(ocr_response, '__dict__'):
+            response_dict = ocr_response.__dict__
+        else:
+            import json
+            try:
+                response_dict = json.loads(str(ocr_response))
+            except:
+                response_dict = {"error": "Could not parse response"}
+        
+        logger.info(f"Response dictionary: {response_dict}")
+        
+        # Extract the markdown text from the pages
+        if isinstance(response_dict, dict) and "pages" in response_dict:
+            for page in response_dict["pages"]:
+                if "markdown" in page:
+                    if ocr_text:
+                        ocr_text += "\n\n"
+                    ocr_text += page["markdown"]
+        else:
+            # Fallback to string representation if we can't extract text
+            ocr_text = str(ocr_response)
+        
+        # Return OCR text and image path
+        return JSONResponse(
+            content={
+                "status": "success",
+                "image_path": image_path,
+                "ocr_text": ocr_text
+            }
+        )
+            
+    except Exception as e:
+        logger.exception(f"Error processing OCR for uploaded image")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"OCR processing failed: {str(e)}"}
+        )
+
+# Endpoint to extract data from OCR text without needing a specific seed packet ID
+@app.post("/seed-packets/extract-data-temp")
+async def extract_data_from_ocr_temp(
+    ocr_text: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """Extract structured data from OCR text without a specific seed packet"""
+    try:
+        # Get the API key from configuration
+        api_key = get_mistral_api_key()
+        if not api_key:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "MISTRAL_API_KEY not set in environment"}
+            )
+
+        # Initialize Mistral client
+        client = Mistral(api_key=api_key)
+
+        # Define prompt to extract structured data
+        prompt = f"""
+Extract structured information from the following seed packet text.
+The text was obtained from OCR and may have formatting issues or errors.
+Please extract the following fields if they are present in the text:
+
+- name: The name of the plant/seed (e.g., 'Tomato', 'Basil', 'Carrot')
+- variety: The specific variety (e.g., 'Roma', 'Sweet Thai', 'Nantes')
+- description: A brief description of the plant
+- planting_instructions: Instructions on how to plant
+- days_to_germination: The number of days it takes to germinate (just the number)
+- spacing: Recommended spacing between plants
+- sun_exposure: Light requirements (e.g., 'Full Sun', 'Partial Shade')
+- soil_type: Soil preferences
+- watering: Watering requirements
+- fertilizer: Fertilizer recommendations
+- package_weight: The weight of the seed packet (just the number in grams)
+- expiration_date: Date format YYYY-MM-DD if present
+
+Return ONLY a JSON object with these fields. If information for a field is not available, use null.
+
+Here's the OCR text from the seed packet:
+
+{ocr_text}
+"""
+
+        # Create chat completion request
+        messages = [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+
+        # Get the chat response
+        logger.info(f"Sending chat completion request for uploaded seed packet image")
+        chat_response = client.chat.complete(
+            model=MISTRAL_CHAT_MODEL,
+            messages=messages
+        )
+
+        # Extract the response content
+        response_content = chat_response.choices[0].message.content
+        logger.info(f"Received chat completion response: {response_content[:100]}...")
+
+        # Parse the JSON response
+        import json
+        try:
+            extracted_data = json.loads(response_content)
+            
+            # Clean up and validate the data
+            if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
+                try:
+                    extracted_data["days_to_germination"] = int(extracted_data["days_to_germination"])
+                except (ValueError, TypeError):
+                    extracted_data["days_to_germination"] = None
+            
+            if "package_weight" in extracted_data and extracted_data["package_weight"]:
+                try:
+                    extracted_data["package_weight"] = float(extracted_data["package_weight"])
+                except (ValueError, TypeError):
+                    extracted_data["package_weight"] = None
+            
+            # Format dates properly
+            if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
+                # Simple validation to check if it matches YYYY-MM-DD format
+                import re
+                if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
+                    extracted_data["expiration_date"] = None
+                    
+            return JSONResponse(content=extracted_data)
+        except json.JSONDecodeError:
+            logger.error("Failed to parse JSON from chat completion response")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Failed to parse structured data from response"}
+            )
+            
+    except Exception as e:
+        logger.exception(f"Error extracting structured data from OCR text")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Data extraction failed: {str(e)}"}
         )
 
 # Garden Supply endpoints
