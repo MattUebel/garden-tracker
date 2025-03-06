@@ -6,6 +6,35 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+# Check for .env file or environment variables
+APP_PATH="$(pwd)"
+ENV_FILE="${APP_PATH}/.env"
+if [ -f "$ENV_FILE" ]; then
+  echo "Found .env file at ${ENV_FILE}"
+else
+  # If .env doesn't exist, check for required environment variables
+  echo "No .env file found. Checking for required environment variables..."
+  
+  # Check for Mistral API key
+  if [ -z "${MISTRAL_API_KEY}" ]; then
+    echo "ERROR: No .env file found and MISTRAL_API_KEY environment variable is not set."
+    echo "Please either:"
+    echo "  1. Create a .env file with MISTRAL_API_KEY=your_api_key in ${APP_PATH}, or"
+    echo "  2. Set the MISTRAL_API_KEY environment variable before running this script"
+    exit 1
+  fi
+  
+  # Optional: You can check for other required environment variables here
+  
+  echo "Required environment variables found. Continuing with update..."
+  
+  # Create .env file from environment variables for the service
+  echo "Creating .env file from environment variables..."
+  echo "MISTRAL_API_KEY=${MISTRAL_API_KEY}" > $ENV_FILE
+  chown $(logname):$(logname) $ENV_FILE
+  chmod 600 $ENV_FILE
+fi
+
 # Check if Docker and Docker Compose are available
 if ! command -v docker &> /dev/null; then
     echo "Docker is not installed. Please install Docker first."
@@ -25,7 +54,6 @@ fi
 
 # Set variables
 SERVICE_NAME="garden-tracker"
-APP_PATH="$(pwd)"
 
 echo "Updating Garden Tracker service..."
 

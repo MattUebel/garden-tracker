@@ -61,6 +61,16 @@
                             <td>
                                 {% if seed_packet.image_path %}
                                 <img src="{{ seed_packet.image_path }}" alt="{{ seed_packet.name }}" class="img-thumbnail" style="max-width: 200px">
+                                {% if has_mistral_api %}
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-info" id="ocrButton" onclick="processOcr({{ seed_packet.id }})">
+                                        <i class="bi bi-text-recognition"></i> Extract Text with OCR
+                                    </button>
+                                    <div id="ocrSpinner" class="spinner-border spinner-border-sm text-info d-none" role="status">
+                                        <span class="visually-hidden">Processing...</span>
+                                    </div>
+                                </div>
+                                {% endif %}
                                 {% else %}
                                 <div class="no-image-placeholder">
                                     <i class="bi bi-image text-muted"></i>
@@ -277,6 +287,28 @@
     </div>
 </div>
 
+<!-- OCR Results Modal -->
+<div class="modal fade" id="ocrResultsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">OCR Results</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <p>The following text was extracted from your seed packet image:</p>
+                    <div class="border p-3 bg-light" id="ocrText" style="white-space: pre-wrap;"></div>
+                </div>
+                <p>A note has been created with these results.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -375,5 +407,44 @@
             alert('Error updating seed packet');
         }
     });
+
+    // Process OCR
+    async function processOcr(seedPacketId) {
+        // Show spinner and disable button
+        const button = document.getElementById('ocrButton');
+        const spinner = document.getElementById('ocrSpinner');
+        button.disabled = true;
+        spinner.classList.remove('d-none');
+        
+        try {
+            const response = await fetch(`/seed-packets/${seedPacketId}/ocr`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                
+                // Display results in modal
+                document.getElementById('ocrText').textContent = data.ocr_text;
+                const resultsModal = new bootstrap.Modal(document.getElementById('ocrResultsModal'));
+                resultsModal.show();
+                
+                // Refresh the notes section after a short delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 5000);
+            } else {
+                const errorData = await response.json();
+                alert(`Error processing OCR: ${errorData.error || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error processing OCR. Make sure the MISTRAL_API_KEY environment variable is set.');
+        } finally {
+            // Hide spinner and re-enable button
+            button.disabled = false;
+            spinner.classList.add('d-none');
+        }
+    }
 </script>
 {% endblock %}

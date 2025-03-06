@@ -9,10 +9,12 @@ from datetime import datetime
 import imghdr
 from sqlalchemy.orm import Query
 from .exceptions import FileUploadException, ValidationException
+from .config import UPLOAD_FOLDER
 
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path("app/static/uploads")
+# Use the upload folder from config
+UPLOAD_DIR = Path(UPLOAD_FOLDER)
 ALLOWED_IMAGE_TYPES = {"jpeg", "jpg", "png", "gif"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 

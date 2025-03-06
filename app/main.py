@@ -8,15 +8,21 @@ from typing import List, Optional, ForwardRef
 import logging
 from datetime import datetime, date
 import json
+import os
 from . import models
 from .database import SessionLocal, engine
 from .logging_config import setup_logging
 from .exceptions import GardenBaseException, ResourceNotFoundException, ValidationException, FileUploadException, DatabaseOperationException
 from pydantic import BaseModel
 import enum
-import os
 from .utils import save_upload_file, delete_upload_file, apply_filters
 from .models.plant import PlantingMethod
+
+# Import configuration
+from .config import get_mistral_api_key, DEBUG, UPLOAD_FOLDER
+
+# Import MistralAI for OCR
+from mistralai import Mistral
 
 # Setup logging
 logger = setup_logging()
@@ -46,7 +52,7 @@ class SQLAlchemyJSONEncoder(json.JSONEncoder):
 def custom_json_dumps(obj, **kwargs):
     return json.dumps(obj, cls=SQLAlchemyJSONEncoder, **kwargs)
 
-app = FastAPI(title="Garden Tracker API")
+app = FastAPI(title="Garden Tracker API", debug=DEBUG)
 
 # Mount static files and templates with custom JSON encoder
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -547,12 +553,17 @@ def get_seed_packet(seed_packet_id: int, request: Request, db: Session = Depends
         if "text/html" in request.headers.get("accept", ""):
             # Sort notes by timestamp descending
             sorted_notes = sorted(seed_packet.notes, key=lambda x: x.timestamp, reverse=True)
+            
+            # Check if Mistral API key is available
+            has_mistral_api = bool(get_mistral_api_key())
+            
             return templates.TemplateResponse(
                 "seed_packets/detail.html",
                 {
                     "request": request,
                     "seed_packet": seed_packet,
-                    "notes": sorted_notes
+                    "notes": sorted_notes,
+                    "has_mistral_api": has_mistral_api
                 }
             )
         # API JSON response
@@ -680,6 +691,82 @@ def delete_seed_packet(seed_packet_id: int, db: Session = Depends(get_db)):
     db.delete(seed_packet)
     db.commit()
     return {"message": "Seed packet deleted"}
+
+# New OCR endpoint for seed packets
+@app.post("/seed-packets/{seed_packet_id}/ocr")
+async def process_seed_packet_ocr(
+    seed_packet_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    try:
+        seed_packet = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
+        if seed_packet is None:
+            raise ResourceNotFoundException("Seed Packet", seed_packet_id)
+
+        if not seed_packet.image_path:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No image available for this seed packet"}
+            )
+
+        # Get the API key from configuration
+        api_key = get_mistral_api_key()
+        if not api_key:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "MISTRAL_API_KEY not set in environment"}
+            )
+
+        # Initialize Mistral client
+        client = Mistral(api_key=api_key)
+
+        # Get the full URL for the image
+        # (Assuming image_path is relative to the static directory)
+        image_url = f"{request.base_url}static/{seed_packet.image_path}"
+        
+        logger.info(f"Processing OCR for seed packet image: {image_url}")
+
+        # Call the OCR API
+        ocr_response = client.ocr.process(
+            model="mistral-ocr-latest",
+            document={
+                "type": "image_url",
+                "image_url": image_url
+            }
+        )
+
+        # Create a note with the OCR results
+        ocr_text = ocr_response.results.text
+        note_body = f"OCR Results:\n\n{ocr_text}"
+        
+        db_note = models.Note(
+            body=note_body,
+            seed_packet_id=seed_packet_id
+        )
+        
+        db.add(db_note)
+        db.commit()
+        db.refresh(db_note)
+        
+        logger.info(f"Created note with OCR results for seed packet: {seed_packet_id}")
+
+        return JSONResponse(
+            content={
+                "status": "success",
+                "note_id": db_note.id,
+                "ocr_text": ocr_text
+            }
+        )
+        
+    except ResourceNotFoundException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error processing OCR for seed packet", extra={"seed_packet_id": seed_packet_id})
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"OCR processing failed: {str(e)}"}
+        )
 
 # Garden Supply endpoints
 @app.post("/garden-supplies/", response_model=GardenSupply)
