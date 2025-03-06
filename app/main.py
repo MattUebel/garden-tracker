@@ -721,20 +721,47 @@ async def process_seed_packet_ocr(
         # Initialize Mistral client
         client = Mistral(api_key=api_key)
 
-        # Get the full URL for the image
-        # (Assuming image_path is relative to the static directory)
-        image_url = f"{request.base_url}static/{seed_packet.image_path}"
+        # Get the actual file path for the image instead of URL
+        image_rel_path = seed_packet.image_path.lstrip("/")
+        image_path = f"app/static/{image_rel_path}"
         
-        logger.info(f"Processing OCR for seed packet image: {image_url}")
+        logger.info(f"Processing OCR for seed packet image: {image_path}")
 
-        # Call the OCR API
-        ocr_response = client.ocr.process(
-            model="mistral-ocr-latest",
-            document={
-                "type": "image_url",
-                "image_url": image_url
-            }
-        )
+        # Base64 encode the image
+        import base64
+        try:
+            with open(image_path, "rb") as image_file:
+                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+                
+            # Determine image format from the file extension
+            image_format = "jpeg"  # Default format
+            if image_path.lower().endswith(".png"):
+                image_format = "png"
+            elif image_path.lower().endswith(".gif"):
+                image_format = "gif"
+            elif image_path.lower().endswith((".jpg", ".jpeg")):
+                image_format = "jpeg"
+
+            # Call the OCR API with base64-encoded image
+            ocr_response = client.ocr.process(
+                model="mistral-ocr-latest",
+                document={
+                    "type": "image_url",
+                    "image_url": f"data:image/{image_format};base64,{base64_image}"
+                }
+            )
+        except FileNotFoundError:
+            logger.error(f"Image file not found: {image_path}")
+            return JSONResponse(
+                status_code=500, 
+                content={"error": f"Image file not found: {image_rel_path}"}
+            )
+        except Exception as e:
+            logger.error(f"Error processing image: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Error processing image: {str(e)}"}
+            )
 
         # Create a note with the OCR results
         ocr_text = ocr_response.results.text
