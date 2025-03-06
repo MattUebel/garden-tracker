@@ -54,18 +54,41 @@ echo "Running database migrations..."
 TABLES_EXIST=$(docker compose exec db psql -U garden_user -d garden_db -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'garden_supplies');")
 
 if [[ $TABLES_EXIST == *"t"* ]]; then
-    echo "Existing database detected. Setting up clean migration state..."
+    echo "Existing database detected. Checking schema..."
     
     # Drop alembic_version if it exists to ensure clean state
     docker compose exec db psql -U garden_user -d garden_db -c "DROP TABLE IF EXISTS alembic_version;"
     
-    # Stamp at head since we know tables exist
+    # Add missing columns if they don't exist
+    echo "Adding any missing columns..."
+    docker compose exec db psql -U garden_user -d garden_db -c "
+        DO \$\$
+        BEGIN
+            BEGIN
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS variety VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS description VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS planting_instructions VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS days_to_germination INTEGER;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS spacing VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS sun_exposure VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS soil_type VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS watering VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS fertilizer VARCHAR;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS package_weight FLOAT;
+                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS expiration_date DATE;
+            EXCEPTION WHEN OTHERS THEN
+                -- If there's an error, log it but continue
+                RAISE NOTICE 'Error adding columns: %', SQLERRM;
+            END;
+        END \$\$;"
+    
+    # Now stamp at head since we've ensured all columns exist
     docker compose exec app alembic stamp head || {
         echo "Error stamping database version"
         exit 1
     }
     
-    echo "Migration state initialized at current version"
+    echo "Migration state initialized and schema updated"
 else
     echo "Fresh database. Running all migrations..."
     docker compose exec app alembic upgrade head || {
