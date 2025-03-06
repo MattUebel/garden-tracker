@@ -56,13 +56,22 @@
                     <td>{{ harvest.timestamp.strftime('%Y-%m-%d') }}</td>
                     <td>
                         <a href="/plants/{{ harvest.plant.id }}">
-                            {{ harvest.plant.name }}
-                            {% if harvest.plant.variety %}({{ harvest.plant.variety }}){% endif %}
+                            {{ harvest.plant.name }}{% if harvest.plant.variety %} ({{ harvest.plant.variety }}){% endif %}
                         </a>
                     </td>
-                    <td>{{ harvest.weight_oz }}</td>
+                    <td>{{ "%.1f"|format(harvest.weight_oz) }}</td>
                     <td>
-                        <button class="btn btn-sm btn-danger" onclick="deleteHarvest({{ harvest.id }})">Delete</button>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="showEditModal({{ harvest|tojson }})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="duplicateHarvest({{ harvest.id }})">
+                                <i class="bi bi-files"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteHarvest({{ harvest.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -103,11 +112,44 @@
     </div>
 </div>
 
+<!-- Edit Harvest Modal -->
+<div class="modal fade" id="editHarvestModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Harvest</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editHarvestForm">
+                    <input type="hidden" id="edit_harvest_id" name="harvest_id">
+                    <div class="mb-3">
+                        <label for="edit_plant_id" class="form-label">Plant</label>
+                        <select class="form-select" id="edit_plant_id" name="plant_id" required>
+                            <option value="">Select Plant</option>
+                            {% for plant in plants %}
+                            <option value="{{ plant.id }}">
+                                {{ plant.name }}{% if plant.variety %} ({{ plant.variety }}){% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_weight_oz" class="form-label">Weight (oz)</label>
+                        <input type="number" step="0.1" class="form-control" id="edit_weight_oz" name="weight_oz" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    // Add form submission handler
+    // Add Harvest Form Handler
     document.getElementById('addHarvestForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
@@ -119,21 +161,52 @@
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(data)
+                body: JSON.stringify({
+                    plant_id: parseInt(data.plant_id),
+                    weight_oz: parseFloat(data.weight_oz)
+                })
             });
             
             if (response.ok) {
                 window.location.reload();
             } else {
-                alert('Error adding harvest');
+                alert('Error creating harvest');
             }
         } catch (error) {
             console.error('Error:', error);
-            alert('Error adding harvest');
+            alert('Error creating harvest');
         }
     });
 
-    // Delete handler
+    // Show edit modal with harvest data
+    function showEditModal(harvest) {
+        document.getElementById('edit_harvest_id').value = harvest.id;
+        document.getElementById('edit_plant_id').value = harvest.plant_id;
+        document.getElementById('edit_weight_oz').value = harvest.weight_oz;
+        
+        const editModal = new bootstrap.Modal(document.getElementById('editHarvestModal'));
+        editModal.show();
+    }
+
+    // Duplicate harvest
+    async function duplicateHarvest(id) {
+        try {
+            const response = await fetch(`/harvests/${id}/duplicate`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error duplicating harvest');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error duplicating harvest');
+        }
+    }
+
+    // Delete harvest
     async function deleteHarvest(id) {
         if (!confirm('Are you sure you want to delete this harvest?')) return;
         
@@ -152,5 +225,36 @@
             alert('Error deleting harvest');
         }
     }
+
+    // Edit form submission
+    document.getElementById('editHarvestForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const harvestId = formData.get('harvest_id');
+        
+        try {
+            const response = await fetch(`/harvests/${harvestId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    plant_id: parseInt(formData.get('plant_id')),
+                    weight_oz: parseFloat(formData.get('weight_oz'))
+                })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error?.message || 'Error updating harvest');
+                return;
+            }
+            
+            window.location.reload();
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating harvest');
+        }
+    });
 </script>
 {% endblock %}

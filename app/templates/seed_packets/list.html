@@ -57,12 +57,13 @@
                     <th>Days to Germinate</th>
                     <th>Expiration</th>
                     <th>Plants</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for packet in seed_packets %}
-                <tr data-href="/seed-packets/{{ packet.id }}">
-                    <td>
+                <tr>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">
                         {% if packet.image_path %}
                         <img src="{{ packet.image_path }}" alt="{{ packet.name }}" class="img-thumbnail" style="max-width: 60px">
                         {% else %}
@@ -71,16 +72,29 @@
                         </div>
                         {% endif %}
                     </td>
-                    <td>{{ packet.name }}</td>
-                    <td>{{ packet.variety or '' }}</td>
-                    <td>{{ packet.description|truncate(100) if packet.description else '' }}</td>
-                    <td>{{ packet.quantity }}</td>
-                    <td>{{ packet.days_to_germination }} days</td>
-                    <td>{{ packet.expiration_date.strftime('%Y-%m-%d') if packet.expiration_date else 'N/A' }}</td>
-                    <td>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.name }}</td>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.variety or '' }}</td>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.description|truncate(100) if packet.description else '' }}</td>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.quantity }}</td>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.days_to_germination }} days</td>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">{{ packet.expiration_date.strftime('%Y-%m-%d') if packet.expiration_date else 'N/A' }}</td>
+                    <td onclick="window.location.href='/seed-packets/{{ packet.id }}'">
                         <a href="/plants?seed_packet_id={{ packet.id }}" onclick="event.stopPropagation();">
                             {{ packet.plants|length }} plants
                         </a>
+                    </td>
+                    <td>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="showEditModal({{ packet|tojson }})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="duplicateSeedPacket({{ packet.id }})">
+                                <i class="bi bi-files"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSeedPacket({{ packet.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -210,6 +224,7 @@
 
 {% block extra_js %}
 <script>
+    // Add Seed Packet Form Handler
     document.getElementById('addSeedPacketForm').addEventListener('submit', async function(e) {
         e.preventDefault();
         const formData = new FormData(this);
@@ -231,46 +246,41 @@
         }
     });
 
-    // Show edit modal
+    // Show edit modal with seed packet data
     function showEditModal(packet) {
         document.getElementById('edit_id').value = packet.id;
         document.getElementById('edit_name').value = packet.name;
         document.getElementById('edit_variety').value = packet.variety || '';
+        document.getElementById('edit_description').value = packet.description || '';
         document.getElementById('edit_quantity').value = packet.quantity;
+        document.getElementById('edit_days_to_germination').value = packet.days_to_germination || '';
+        document.getElementById('edit_expiration_date').value = packet.expiration_date ? packet.expiration_date.split('T')[0] : '';
         
         const editModal = new bootstrap.Modal(document.getElementById('editSeedPacketModal'));
         editModal.show();
     }
 
-    // Edit form submission
-    document.getElementById('editSeedPacketForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const id = formData.get('id');
-        formData.delete('id');
-        
+    // Duplicate seed packet
+    async function duplicateSeedPacket(id) {
         try {
-            const response = await fetch(`/seed-packets/${id}`, {
-                method: 'PUT',
-                body: formData // FormData will automatically set correct Content-Type
+            const response = await fetch(`/seed-packets/${id}/duplicate`, {
+                method: 'POST'
             });
             
-            if (!response.ok) {
-                const error = await response.json();
-                alert(error.error?.message || 'Error updating seed packet');
-                return;
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error duplicating seed packet');
             }
-            
-            window.location.reload();
         } catch (error) {
             console.error('Error:', error);
-            alert('Error updating seed packet');
+            alert('Error duplicating seed packet');
         }
-    });
+    }
 
-    // Delete handler
+    // Delete seed packet
     async function deleteSeedPacket(id) {
-        if (!confirm('Are you sure you want to delete this seed packet?')) return;
+        if (!confirm('Are you sure you want to delete this seed packet? This will also remove all associated plants.')) return;
         
         try {
             const response = await fetch(`/seed-packets/${id}`, {
@@ -287,5 +297,31 @@
             alert('Error deleting seed packet');
         }
     }
+
+    // Edit form submission
+    document.getElementById('editSeedPacketForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const id = formData.get('id');
+        formData.delete('id');
+        
+        try {
+            const response = await fetch(`/seed-packets/${id}`, {
+                method: 'PUT',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                alert(error.error?.message || 'Error updating seed packet');
+                return;
+            }
+            
+            window.location.reload();
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error updating seed packet');
+        }
+    });
 </script>
 {% endblock %}

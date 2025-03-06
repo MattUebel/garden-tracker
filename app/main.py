@@ -427,6 +427,32 @@ def delete_plant(plant_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Plant deleted"}
 
+@app.post("/plants/{plant_id}/duplicate", response_model=Plant)
+async def duplicate_plant(plant_id: int, db: Session = Depends(get_db)):
+    """Duplicate a plant with all its properties except unique identifiers"""
+    try:
+        # Get the original plant
+        original = db.query(models.Plant).filter(models.Plant.id == plant_id).first()
+        if original is None:
+            raise HTTPException(status_code=404, detail="Plant not found")
+
+        # Create new plant with same properties
+        db_plant = models.Plant(
+            name=f"{original.name} (Copy)",
+            variety=original.variety,
+            planting_method=original.planting_method,
+            seed_packet_id=original.seed_packet_id,
+            year_id=original.year_id
+        )
+
+        db.add(db_plant)
+        db.commit()
+        db.refresh(db_plant)
+        return db_plant
+    except Exception as e:
+        logger.exception(f"Error duplicating plant", extra={"plant_id": plant_id})
+        raise DatabaseOperationException("create", str(e))
+
 # Seed Packet endpoints
 @app.post("/seed-packets/", response_model=SeedPacket)
 async def create_seed_packet(
@@ -540,6 +566,60 @@ async def update_seed_packet(
     db.refresh(db_seed_packet)
     return db_seed_packet
 
+@app.post("/seed-packets/{seed_packet_id}/duplicate", response_model=SeedPacket)
+async def duplicate_seed_packet(seed_packet_id: int, db: Session = Depends(get_db)):
+    """Duplicate a seed packet with all its properties except unique identifiers"""
+    try:
+        # Get the original seed packet
+        original = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
+        if original is None:
+            raise HTTPException(status_code=404, detail="Seed packet not found")
+
+        # Create new seed packet with same properties
+        db_seed_packet = models.SeedPacket(
+            name=f"{original.name} (Copy)",
+            variety=original.variety,
+            description=original.description,
+            planting_instructions=original.planting_instructions,
+            days_to_germination=original.days_to_germination,
+            spacing=original.spacing,
+            sun_exposure=original.sun_exposure,
+            soil_type=original.soil_type,
+            watering=original.watering,
+            fertilizer=original.fertilizer,
+            package_weight=original.package_weight,
+            expiration_date=original.expiration_date,
+            quantity=original.quantity
+        )
+        
+        # If original has an image, copy it
+        if original.image_path:
+            try:
+                from shutil import copyfile
+                import os
+                from uuid import uuid4
+                
+                # Generate new unique filename
+                ext = os.path.splitext(original.image_path)[1]
+                new_filename = f"{uuid4()}{ext}"
+                new_path = os.path.join("app/static/uploads", new_filename)
+                
+                # Copy the file
+                copyfile(f"app/static/{original.image_path}", new_path)
+                db_seed_packet.image_path = f"uploads/{new_filename}"
+            except Exception as e:
+                logger.warning(f"Failed to copy image for duplicated seed packet: {str(e)}")
+                # Continue without the image if copy fails
+                pass
+
+        db.add(db_seed_packet)
+        db.commit()
+        db.refresh(db_seed_packet)
+        return db_seed_packet
+    except Exception as e:
+        logger.exception(f"Error duplicating seed packet", extra={"seed_packet_id": seed_packet_id})
+        raise DatabaseOperationException("create", str(e))
+
 @app.delete("/seed-packets/{seed_packet_id}")
 def delete_seed_packet(seed_packet_id: int, db: Session = Depends(get_db)):
     seed_packet = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
@@ -631,6 +711,49 @@ async def update_garden_supply(
     db.commit()
     db.refresh(db_supply)
     return db_supply
+
+@app.post("/garden-supplies/{supply_id}/duplicate", response_model=GardenSupply)
+async def duplicate_garden_supply(supply_id: int, db: Session = Depends(get_db)):
+    """Duplicate a garden supply with all its properties except unique identifiers"""
+    try:
+        # Get the original supply
+        original = db.query(models.GardenSupply).filter(models.GardenSupply.id == supply_id).first()
+        if original is None:
+            raise HTTPException(status_code=404, detail="Garden supply not found")
+
+        # Create new supply with same properties
+        db_supply = models.GardenSupply(
+            name=f"{original.name} (Copy)",
+            description=original.description
+        )
+        
+        # If original has an image, copy it
+        if original.image_path:
+            try:
+                from shutil import copyfile
+                import os
+                from uuid import uuid4
+                
+                # Generate new unique filename
+                ext = os.path.splitext(original.image_path)[1]
+                new_filename = f"{uuid4()}{ext}"
+                new_path = os.path.join("app/static/uploads", new_filename)
+                
+                # Copy the file
+                copyfile(f"app/static/{original.image_path}", new_path)
+                db_supply.image_path = f"uploads/{new_filename}"
+            except Exception as e:
+                logger.warning(f"Failed to copy image for duplicated garden supply: {str(e)}")
+                # Continue without the image if copy fails
+                pass
+
+        db.add(db_supply)
+        db.commit()
+        db.refresh(db_supply)
+        return db_supply
+    except Exception as e:
+        logger.exception(f"Error duplicating garden supply", extra={"supply_id": supply_id})
+        raise DatabaseOperationException("create", str(e))
 
 @app.delete("/garden-supplies/{supply_id}")
 def delete_garden_supply(supply_id: int, db: Session = Depends(get_db)):
@@ -809,6 +932,29 @@ def delete_harvest(harvest_id: int, db: Session = Depends(get_db)):
     db.delete(harvest)
     db.commit()
     return {"message": "Harvest deleted"}
+
+@app.post("/harvests/{harvest_id}/duplicate", response_model=Harvest)
+async def duplicate_harvest(harvest_id: int, db: Session = Depends(get_db)):
+    """Duplicate a harvest with all its properties except unique identifiers"""
+    try:
+        # Get the original harvest
+        original = db.query(models.Harvest).filter(models.Harvest.id == harvest_id).first()
+        if original is None:
+            raise HTTPException(status_code=404, detail="Harvest not found")
+
+        # Create new harvest with same properties
+        db_harvest = models.Harvest(
+            plant_id=original.plant_id,
+            weight_oz=original.weight_oz
+        )
+
+        db.add(db_harvest)
+        db.commit()
+        db.refresh(db_harvest)
+        return db_harvest
+    except Exception as e:
+        logger.exception(f"Error duplicating harvest", extra={"harvest_id": harvest_id})
+        raise DatabaseOperationException("create", str(e))
 
 # HTML Routes
 @app.get("/", response_class=HTMLResponse)

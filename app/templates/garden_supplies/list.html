@@ -48,12 +48,13 @@
                     <th>Description</th>
                     <th>Plants</th>
                     <th>Created</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for supply in supplies %}
-                <tr data-href="/garden-supplies/{{ supply.id }}">
-                    <td>
+                <tr>
+                    <td onclick="window.location.href='/garden-supplies/{{ supply.id }}'">
                         {% if supply.image_path %}
                         <img src="{{ supply.image_path }}" alt="{{ supply.name }}" style="max-width: 50px; max-height: 50px;">
                         {% else %}
@@ -62,14 +63,27 @@
                         </div>
                         {% endif %}
                     </td>
-                    <td>{{ supply.name }}</td>
-                    <td>{{ supply.description or '' }}</td>
-                    <td>
+                    <td onclick="window.location.href='/garden-supplies/{{ supply.id }}'">{{ supply.name }}</td>
+                    <td onclick="window.location.href='/garden-supplies/{{ supply.id }}'">{{ supply.description or '' }}</td>
+                    <td onclick="window.location.href='/garden-supplies/{{ supply.id }}'">
                         <a href="/plants?supply_id={{ supply.id }}" onclick="event.stopPropagation();">
                             {{ supply.plants|length }} plants
                         </a>
                     </td>
-                    <td>{{ supply.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td onclick="window.location.href='/garden-supplies/{{ supply.id }}'">{{ supply.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="showEditModal({{ supply|tojson }})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="duplicateSupply({{ supply.id }})">
+                                <i class="bi bi-files"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteSupply({{ supply.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -170,6 +184,44 @@
         editModal.show();
     }
 
+    // Duplicate supply
+    async function duplicateSupply(id) {
+        try {
+            const response = await fetch(`/garden-supplies/${id}/duplicate`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error duplicating garden supply');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error duplicating garden supply');
+        }
+    }
+
+    // Delete handler
+    async function deleteSupply(id) {
+        if (!confirm('Are you sure you want to delete this garden supply?')) return;
+        
+        try {
+            const response = await fetch(`/garden-supplies/${id}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error deleting garden supply');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error deleting garden supply');
+        }
+    }
+
     // Edit form submission
     document.getElementById('editSupplyForm').addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -193,25 +245,5 @@
             alert('Error updating garden supply');
         }
     });
-
-    // Delete handler
-    async function deleteSupply(id) {
-        if (!confirm('Are you sure you want to delete this garden supply?')) return;
-        
-        try {
-            const response = await fetch(`/garden-supplies/${id}`, {
-                method: 'DELETE'
-            });
-            
-            if (response.ok) {
-                window.location.reload();
-            } else {
-                alert('Error deleting garden supply');
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('Error deleting garden supply');
-        }
-    }
 </script>
 {% endblock %}

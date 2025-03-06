@@ -103,23 +103,37 @@
                     <th>Year</th>
                     <th>Seed Packet</th>
                     <th>Created</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for plant in plants %}
-                <tr data-href="/plants/{{ plant.id }}">
-                    <td>{{ plant.name }}</td>
-                    <td>{{ plant.variety or '' }}</td>
-                    <td>{{ plant.planting_method }}</td>
-                    <td>{{ plant.year.year }}</td>
-                    <td>
+                <tr>
+                    <td onclick="window.location.href='/plants/{{ plant.id }}'">{{ plant.name }}</td>
+                    <td onclick="window.location.href='/plants/{{ plant.id }}'">{{ plant.variety or '' }}</td>
+                    <td onclick="window.location.href='/plants/{{ plant.id }}'">{{ plant.planting_method }}</td>
+                    <td onclick="window.location.href='/plants/{{ plant.id }}'">{{ plant.year.year }}</td>
+                    <td onclick="window.location.href='/plants/{{ plant.id }}'">
                         {% if plant.seed_packet %}
                         <a href="/seed-packets/{{ plant.seed_packet.id }}" onclick="event.stopPropagation();">
                             {{ plant.seed_packet.name }}
                         </a>
                         {% endif %}
                     </td>
-                    <td>{{ plant.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td onclick="window.location.href='/plants/{{ plant.id }}'">{{ plant.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="showEditModal({{ plant|tojson }})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-success" onclick="duplicatePlant({{ plant.id }})">
+                                <i class="bi bi-files"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deletePlant({{ plant.id }})">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -313,6 +327,24 @@
         } catch (error) {
             console.error('Error:', error);
             alert('Error deleting plant');
+        }
+    }
+
+    // Duplicate plant
+    async function duplicatePlant(id) {
+        try {
+            const response = await fetch(`/plants/${id}/duplicate`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Error duplicating plant');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error duplicating plant');
         }
     }
 </script>
