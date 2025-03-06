@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, func
+from sqlalchemy.orm import relationship
 from .base import Base
 
 class Harvest(Base):
@@ -10,6 +11,9 @@ class Harvest(Base):
     
     # Foreign Key
     plant_id = Column(Integer, ForeignKey('plants.id'), nullable=False)
+
+    # Relationship
+    plant = relationship("Plant", back_populates="harvests")
 
     def __repr__(self):
         return f"<Harvest {self.id} - {self.weight_oz}oz>"

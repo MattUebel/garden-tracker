@@ -206,6 +206,14 @@ class Year(BaseModel):
     class Config:
         from_attributes = True
 
+class PlantInHarvest(BaseModel):
+    id: int
+    name: str
+    variety: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 class NoteBase(BaseModel):
     body: str
     image_path: Optional[str] = None
@@ -304,6 +312,7 @@ class HarvestCreate(HarvestBase):
 class Harvest(HarvestBase):
     id: int
     timestamp: datetime
+    plant: PlantInHarvest
 
     class Config:
         from_attributes = True
