@@ -123,13 +123,13 @@
                     <td onclick="window.location.href='/plants/{{ plant.id }}'">{{ plant.created_at.strftime('%Y-%m-%d') }}</td>
                     <td>
                         <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="showEditModal({{ plant|tojson }})">
+                            <button class="btn btn-sm btn-outline-primary" onclick="showEditModal('{{ plant.id }}')">
                                 <i class="bi bi-pencil"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-success" onclick="duplicatePlant({{ plant.id }})">
+                            <button class="btn btn-sm btn-outline-success" onclick="duplicatePlant('{{ plant.id }}')">
                                 <i class="bi bi-files"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deletePlant({{ plant.id }})">
+                            <button class="btn btn-sm btn-outline-danger" onclick="deletePlant('{{ plant.id }}')">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>
