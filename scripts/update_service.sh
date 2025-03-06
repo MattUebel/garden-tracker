@@ -50,43 +50,24 @@ fi
 # Run database migrations
 echo "Running database migrations..."
 
-# Check if alembic_version exists
-echo "Checking database state..."
-VERSION_EXISTS=$(docker compose exec db psql -U garden_user -d garden_db -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'alembic_version');")
+# First check if garden_supplies table exists to determine if this is a pre-existing database
+TABLES_EXIST=$(docker compose exec db psql -U garden_user -d garden_db -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'garden_supplies');")
 
-if [[ $VERSION_EXISTS == *"f"* ]]; then
-    echo "No version tracking table found. Initializing version tracking..."
+if [[ $TABLES_EXIST == *"t"* ]]; then
+    echo "Existing database detected. Setting up clean migration state..."
     
-    # Check if tables exist to determine starting point
-    TABLES_EXIST=$(docker compose exec db psql -U garden_user -d garden_db -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'garden_supplies');")
+    # Drop alembic_version if it exists to ensure clean state
+    docker compose exec db psql -U garden_user -d garden_db -c "DROP TABLE IF EXISTS alembic_version;"
     
-    if [[ $TABLES_EXIST == *"t"* ]]; then
-        echo "Tables already exist. Setting up version tracking at initial migration..."
-        # Drop alembic_version if it exists (shouldn't, but just in case)
-        docker compose exec db psql -U garden_user -d garden_db -c "DROP TABLE IF EXISTS alembic_version;"
-        
-        # First stamp at initial migration since tables exist
-        docker compose exec app alembic stamp e3e3dce7551b || {
-            echo "Error stamping initial version"
-            exit 1
-        }
-        
-        # Now stamp at current head to skip all migrations since tables exist
-        docker compose exec app alembic stamp head || {
-            echo "Error stamping at current version"
-            exit 1
-        }
-        
-        echo "Version tracking initialized at current version"
-    else
-        echo "Fresh database. Running all migrations..."
-        docker compose exec app alembic upgrade head || {
-            echo "Error running initial migrations"
-            exit 1
-        }
-    fi
+    # Stamp at head since we know tables exist
+    docker compose exec app alembic stamp head || {
+        echo "Error stamping database version"
+        exit 1
+    }
+    
+    echo "Migration state initialized at current version"
 else
-    echo "Version tracking exists. Running any pending migrations..."
+    echo "Fresh database. Running all migrations..."
     docker compose exec app alembic upgrade head || {
         echo "Error running migrations"
         exit 1
