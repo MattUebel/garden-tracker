@@ -511,13 +511,21 @@
             if (response.ok) {
                 const data = await response.json();
                 
-                // Store OCR text in a global variable for later use
+                // Store OCR text and structured data in global variables for later use
                 window.ocrText = data.ocr_text;
+                window.structuredData = data.structured_data;
                 
                 // Display results in modal
                 document.getElementById('ocrText').textContent = data.ocr_text;
                 const resultsModal = new bootstrap.Modal(document.getElementById('ocrResultsModal'));
                 resultsModal.show();
+                
+                // If we already have structured data from the enhanced OCR, populate the form immediately
+                if (data.structured_data && Object.keys(data.structured_data).length > 0) {
+                    // Automatically use the provided extraction button - streamline the UX
+                    document.getElementById('extractDataBtn').textContent = 'View Extracted Data';
+                    document.getElementById('extractDataBtn').click();
+                }
                 
                 // Refresh the notes section after a short delay
                 setTimeout(() => {
@@ -546,50 +554,58 @@
         spinner.classList.remove('d-none');
         
         try {
-            // Use the OCR text from the global variable
-            const ocrText = window.ocrText;
-            if (!ocrText) {
-                alert('No OCR text available. Please run OCR first.');
-                return;
-            }
-            
-            // Create form data with OCR text
-            const formData = new FormData();
-            formData.append('ocr_text', ocrText);
-            
-            const response = await fetch(`/seed-packets/{{ seed_packet.id }}/extract-data`, {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (response.ok) {
-                const extractedData = await response.json();
-                console.log('Extracted data:', extractedData);
+            // Check if we already have structured data from the enhanced OCR
+            if (window.structuredData && Object.keys(window.structuredData).length > 0) {
+                // Use the structured data that was already extracted
+                const extractedData = window.structuredData;
+                console.log('Using pre-extracted structured data:', extractedData);
                 
                 // Close the OCR results modal
                 const ocrModal = bootstrap.Modal.getInstance(document.getElementById('ocrResultsModal'));
                 if (ocrModal) ocrModal.hide();
                 
                 // Fill in the form fields in the extracted data modal
-                document.getElementById('extracted_name').value = extractedData.name || '';
-                document.getElementById('extracted_variety').value = extractedData.variety || '';
-                document.getElementById('extracted_description').value = extractedData.description || '';
-                document.getElementById('extracted_package_weight').value = extractedData.package_weight || '';
-                document.getElementById('extracted_expiration_date').value = extractedData.expiration_date || '';
-                document.getElementById('extracted_planting_instructions').value = extractedData.planting_instructions || '';
-                document.getElementById('extracted_days_to_germination').value = extractedData.days_to_germination || '';
-                document.getElementById('extracted_spacing').value = extractedData.spacing || '';
-                document.getElementById('extracted_sun_exposure').value = extractedData.sun_exposure || '';
-                document.getElementById('extracted_soil_type').value = extractedData.soil_type || '';
-                document.getElementById('extracted_watering').value = extractedData.watering || '';
-                document.getElementById('extracted_fertilizer').value = extractedData.fertilizer || '';
+                populateExtractedDataForm(extractedData);
                 
                 // Show the extracted data modal
                 const extractedDataModal = new bootstrap.Modal(document.getElementById('extractedDataModal'));
                 extractedDataModal.show();
             } else {
-                const errorData = await response.json();
-                alert(`Error extracting data: ${errorData.error || 'Unknown error'}`);
+                // Fall back to the older approach of extracting data if needed
+                // Use the OCR text from the global variable
+                const ocrText = window.ocrText;
+                if (!ocrText) {
+                    alert('No OCR text available. Please run OCR first.');
+                    return;
+                }
+                
+                // Create form data with OCR text
+                const formData = new FormData();
+                formData.append('ocr_text', ocrText);
+                
+                const response = await fetch(`/seed-packets/{{ seed_packet.id }}/extract-data`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.ok) {
+                    const extractedData = await response.json();
+                    console.log('Extracted data:', extractedData);
+                    
+                    // Close the OCR results modal
+                    const ocrModal = bootstrap.Modal.getInstance(document.getElementById('ocrResultsModal'));
+                    if (ocrModal) ocrModal.hide();
+                    
+                    // Fill in the form fields in the extracted data modal
+                    populateExtractedDataForm(extractedData);
+                    
+                    // Show the extracted data modal
+                    const extractedDataModal = new bootstrap.Modal(document.getElementById('extractedDataModal'));
+                    extractedDataModal.show();
+                } else {
+                    const errorData = await response.json();
+                    alert(`Error extracting data: ${errorData.error || 'Unknown error'}`);
+                }
             }
         } catch (error) {
             console.error('Error:', error);
@@ -600,6 +616,77 @@
             spinner.classList.add('d-none');
         }
     });
+    
+    // Helper function to populate the extracted data form
+    function populateExtractedDataForm(data) {
+        // Handle array format (from test_ocr.py sample)
+        const extractedData = Array.isArray(data) ? data[0] : data;
+        
+        // Basic information fields
+        document.getElementById('extracted_name').value = extractedData.name || extractedData.title || '';
+        document.getElementById('extracted_variety').value = extractedData.variety || '';
+        document.getElementById('extracted_description').value = extractedData.description || '';
+        
+        // Handle weight - parse and convert to numeric value if needed
+        let weightValue = '';
+        if (extractedData.package_weight) {
+            weightValue = extractedData.package_weight;
+        } else if (extractedData.net_weight) {
+            // Try to extract numeric value from formats like "100 mg"
+            const match = String(extractedData.net_weight).match(/(\d+(?:\.\d+)?)/);
+            if (match) {
+                const value = parseFloat(match[1]);
+                // Convert to grams if in mg
+                if (String(extractedData.net_weight).toLowerCase().includes('mg')) {
+                    weightValue = value / 1000;
+                } else {
+                    weightValue = value;
+                }
+            }
+        }
+        document.getElementById('extracted_package_weight').value = weightValue;
+        
+        document.getElementById('extracted_expiration_date').value = extractedData.expiration_date || '';
+        
+        // Growing information fields
+        let plantingInstructions = extractedData.planting_instructions || extractedData.growing_instructions || '';
+        document.getElementById('extracted_planting_instructions').value = plantingInstructions;
+        
+        // Handle days to germination - parse from ranges like "5 - 10 days"
+        let daysToGermValue = '';
+        if (extractedData.days_to_germination) {
+            if (typeof extractedData.days_to_germination === 'string') {
+                const match = extractedData.days_to_germination.match(/(\d+)\s*-\s*(\d+)/);
+                if (match) {
+                    // Use the average if it's a range
+                    daysToGermValue = Math.floor((parseInt(match[1]) + parseInt(match[2])) / 2);
+                } else {
+                    // Try to extract just the number
+                    const numMatch = extractedData.days_to_germination.match(/(\d+)/);
+                    if (numMatch) {
+                        daysToGermValue = parseInt(numMatch[1]);
+                    }
+                }
+            } else {
+                daysToGermValue = extractedData.days_to_germination;
+            }
+        }
+        document.getElementById('extracted_days_to_germination').value = daysToGermValue;
+        
+        // Handle spacing - extract value from formats like "36""
+        let spacingValue = '';
+        if (extractedData.spacing) {
+            spacingValue = extractedData.spacing;
+        } else if (extractedData.plant_spacing) {
+            spacingValue = extractedData.plant_spacing;
+        }
+        document.getElementById('extracted_spacing').value = spacingValue;
+        
+        document.getElementById('extracted_sun_exposure').value = extractedData.sun_exposure || extractedData.light_requirements || '';
+        document.getElementById('extracted_soil_type').value = extractedData.soil_type || extractedData.soil_temperature || '';
+        document.getElementById('extracted_watering').value = extractedData.watering || '';
+        document.getElementById('extracted_fertilizer').value = extractedData.fertilizer || '';
+    }
     
     // Apply extracted data to seed packet
     document.getElementById('applyExtractedDataBtn').addEventListener('click', async function() {

@@ -298,6 +298,135 @@
 
 {% block extra_js %}
 <script>
+    // Global variable to store extracted data for later use
+    let lastExtractedData = null;
+    
+    // Initialize Bootstrap components when the document is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add event listener for when the modal is shown
+        document.getElementById('addSeedPacketModal').addEventListener('shown.bs.modal', function () {
+            console.log('Add modal shown, checking for stored data');
+            // If we have extracted data that hasn't been applied yet, apply it now
+            if (lastExtractedData) {
+                console.log('Found stored data to apply:', lastExtractedData);
+                populateFormFromData(lastExtractedData);
+            }
+        });
+    });
+    
+    // Function to directly populate form fields from data
+    function populateFormFromData(data) {
+        try {
+            // Get references to all form fields in the modal
+            const form = document.getElementById('addSeedPacketForm');
+            
+            // Basic fields
+            const nameInput = form.querySelector('input[name="name"]');
+            const varietyInput = form.querySelector('input[name="variety"]');
+            const descriptionInput = form.querySelector('textarea[name="description"]');
+            const quantityInput = form.querySelector('input[name="quantity"]');
+            const packageWeightInput = form.querySelector('input[name="package_weight"]');
+            const expirationDateInput = form.querySelector('input[name="expiration_date"]');
+            
+            // Growing info fields
+            const plantingInstructionsInput = form.querySelector('textarea[name="planting_instructions"]');
+            const daysToGerminationInput = form.querySelector('input[name="days_to_germination"]');
+            const spacingInput = form.querySelector('input[name="spacing"]');
+            const sunExposureInput = form.querySelector('input[name="sun_exposure"]');
+            const soilTypeInput = form.querySelector('input[name="soil_type"]');
+            const wateringInput = form.querySelector('input[name="watering"]');
+            const fertilizerInput = form.querySelector('input[name="fertilizer"]');
+            
+            console.log('Form field references:', {
+                nameInput,
+                varietyInput,
+                descriptionInput,
+                // etc...
+            });
+            
+            // Get name and variety (with special handling)
+            const nameValue = data.name || data.title || '';
+            let variety = data.variety || '';
+            let name = nameValue;
+            
+            // Split combined name/variety if needed
+            if (nameValue && !variety) {
+                const patterns = [
+                    /^(.+?)\s*[-–—:|\\/]\s*(.+)$/,  // Format: "Name - Variety"
+                    /^(.+?)\s*[(（]\s*(.+?)\s*[)）]$/,  // Format: "Name (Variety)"
+                    /^(.+?)\s+["'"'](.+?)["'"']$/   // Format: "Name 'Variety'"
+                ];
+                
+                for (const pattern of patterns) {
+                    const match = nameValue.match(pattern);
+                    if (match) {
+                        name = match[1].trim();
+                        variety = match[2].trim();
+                        break;
+                    }
+                }
+            }
+            
+            // Set field values directly
+            if (nameInput) nameInput.value = name;
+            if (varietyInput) varietyInput.value = variety;
+            if (descriptionInput) descriptionInput.value = data.description || '';
+            if (quantityInput && !quantityInput.value) quantityInput.value = '1';
+            
+            // Set package weight (handle numeric or string with units)
+            if (packageWeightInput) {
+                const weight = data.package_weight || data.net_weight || '';
+                // Extract just the number if it has units
+                if (typeof weight === 'string' && weight) {
+                    const match = weight.match(/(\d+(?:\.\d+)?)/);
+                    packageWeightInput.value = match ? match[1] : '';
+                } else {
+                    packageWeightInput.value = weight || '';
+                }
+            }
+            
+            // Set date if available
+            if (expirationDateInput) expirationDateInput.value = data.expiration_date || '';
+            
+            // Set growing info fields
+            if (plantingInstructionsInput) plantingInstructionsInput.value = data.planting_instructions || data.growing_instructions || '';
+            
+            // Handle days_to_germination which might be in a range format
+            if (daysToGerminationInput) {
+                const daysToGerm = data.days_to_germination || '';
+                if (typeof daysToGerm === 'string' && daysToGerm.includes('-')) {
+                    const match = daysToGerm.match(/(\d+)\s*[-–]\s*(\d+)/);
+                    if (match) {
+                        const avg = Math.round((parseInt(match[1]) + parseInt(match[2])) / 2);
+                        daysToGerminationInput.value = avg;
+                    } else {
+                        // Just extract any number
+                        const numMatch = daysToGerm.match(/\d+/);
+                        daysToGerminationInput.value = numMatch ? numMatch[0] : '';
+                    }
+                } else {
+                    daysToGerminationInput.value = daysToGerm;
+                }
+            }
+            
+            // Set remaining fields
+            if (spacingInput) spacingInput.value = data.spacing || data.plant_spacing || '';
+            if (sunExposureInput) sunExposureInput.value = data.sun_exposure || data.light_requirements || '';
+            if (soilTypeInput) soilTypeInput.value = data.soil_type || data.soil_temperature || '';
+            if (wateringInput) wateringInput.value = data.watering || '';
+            if (fertilizerInput) fertilizerInput.value = data.fertilizer || '';
+            
+            console.log('Form fields populated successfully');
+            console.log('Current name value:', nameInput ? nameInput.value : 'name field not found');
+            console.log('Current variety value:', varietyInput ? varietyInput.value : 'variety field not found');
+            
+            // Clear the global data after it's been applied
+            lastExtractedData = null;
+        } catch (e) {
+            console.error('Error populating form fields:', e);
+        }
+    }
+    
     // Add Seed Packet Form Handler
     document.getElementById('addSeedPacketForm').addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -366,15 +495,32 @@
         this.disabled = true;
         spinner.classList.remove('d-none');
 
+        // Set a timeout to handle long-running requests
+        const timeoutId = setTimeout(() => {
+            spinner.classList.add('d-none');
+            this.disabled = false;
+            alert('The request is taking longer than expected. It may still complete in the background, but you can continue working.');
+        }, 30000); // 30 seconds timeout
+
         try {
             // Step 1: Upload the image and get OCR text
             const formData = new FormData();
             formData.append('image', fileInput.files[0]);
 
+            // Use fetch with AbortController for timeout control
+            const controller = new AbortController();
+            const signal = controller.signal;
+            
+            // Set another safety timeout for the fetch operation
+            const fetchTimeoutId = setTimeout(() => controller.abort(), 60000); // 60 second hard limit
+
             const ocrResponse = await fetch('/seed-packets/ocr-temp', {
                 method: 'POST',
-                body: formData
+                body: formData,
+                signal: signal
             });
+
+            clearTimeout(fetchTimeoutId); // Clear the fetch timeout if successful
 
             if (!ocrResponse.ok) {
                 const errorData = await ocrResponse.json();
@@ -404,25 +550,31 @@
             const ocrText = ocrData.ocr_text;
             console.log('OCR Text:', ocrText);
             
-            // Step 2: Extract structured data from the OCR text
-            const response = await fetch('/seed-packets/extract-info', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ ocr_text: ocrText })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Data extraction failed');
+            // Check if we already have structured data from the OCR endpoint
+            let extractedData = {};
+            if (ocrData.structured_data && Object.keys(ocrData.structured_data).length > 0) {
+                console.log('Using structured data from OCR endpoint:', ocrData.structured_data);
+                extractedData = ocrData.structured_data;
+            } else {
+                // Step 2: Extract structured data from the OCR text
+                const response = await fetch('/seed-packets/extract-info', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ocr_text: ocrText })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Data extraction failed');
+                }
+                extractedData = await response.json();
+                console.log('Extracted Data from separate extraction:', extractedData);
             }
-
-            const extractedData = await response.json();
-            console.log('Extracted Data:', extractedData);
-
+            
             // Check if we got meaningful data or just nulls
-            const hasData = Object.values(extractedData).some(value => value !== null);
+            const hasData = Object.values(extractedData).some(value => value !== null && value !== '');
+            console.log('Has meaningful data:', hasData);
             if (!hasData) {
                 console.warn("Extraction returned only null values");
                 alert("The system couldn't extract specific information from this image. The image has been uploaded, but please enter the details manually.");
@@ -436,26 +588,19 @@
                 }
                 return;
             }
-
-            // Fill in the form fields with the extracted data
-            document.getElementById('name').value = extractedData.name || '';
-            document.getElementById('variety').value = extractedData.variety || '';
-            document.getElementById('description').value = extractedData.description || '';
-            document.getElementById('package_weight').value = extractedData.package_weight || '';
-            document.getElementById('expiration_date').value = extractedData.expiration_date || '';
-            document.getElementById('planting_instructions').value = extractedData.planting_instructions || '';
-            document.getElementById('days_to_germination').value = extractedData.days_to_germination || '';
-            document.getElementById('spacing').value = extractedData.spacing || '';
-            document.getElementById('sun_exposure').value = extractedData.sun_exposure || '';
-            document.getElementById('soil_type').value = extractedData.soil_type || '';
-            document.getElementById('watering').value = extractedData.watering || '';
-            document.getElementById('fertilizer').value = extractedData.fertilizer || '';
-
-            // Set a default quantity if no value is set
-            if (!document.getElementById('quantity').value) {
-                document.getElementById('quantity').value = '1';
+            
+            // Process the data to ensure we get the right format
+            if (Array.isArray(extractedData) && extractedData.length > 0) {
+                extractedData = extractedData[0];
             }
-
+            
+            // Store the data for later use and apply it immediately
+            console.log('Storing extracted data for form population:', extractedData);
+            lastExtractedData = extractedData;
+            
+            // Run the form population function
+            populateFormFromData(extractedData);
+            
             // Also copy the image to the main image field if it's not already set
             const mainImageInput = document.getElementById('image');
             if (!mainImageInput.files || mainImageInput.files.length === 0) {
@@ -464,15 +609,20 @@
                 dataTransfer.items.add(fileInput.files[0]);
                 mainImageInput.files = dataTransfer.files;
             }
-
+            
             // Show success message
             alert('Information extracted successfully! Please review and make any necessary adjustments before saving.');
             
         } catch (error) {
             console.error('Error:', error);
-            alert('Error extracting information: ' + error.message);
+            if (error.name === 'AbortError') {
+                alert('The request took too long and was cancelled. Please try again with a smaller image or try later when the server is less busy.');
+            } else {
+                alert('Error extracting information: ' + error.message);
+            }
         } finally {
-            // Hide spinner and re-enable button
+            // Hide spinner, re-enable button, and clear the timeout
+            clearTimeout(timeoutId);
             this.disabled = false;
             spinner.classList.add('d-none');
         }
