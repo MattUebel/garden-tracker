@@ -805,11 +805,27 @@ async def process_seed_packet_ocr(
             # Extract the markdown text from the pages
             ocr_text = ""
             if isinstance(response_dict, dict) and "pages" in response_dict:
+                page_texts = []
+                
                 for page in response_dict["pages"]:
                     if "markdown" in page:
+                        page_text = page["markdown"]
+                        page_texts.append(page_text)
+                        
+                        # If we have OCR text, append it
                         if ocr_text:
                             ocr_text += "\n\n"
-                        ocr_text += page["markdown"]
+                        ocr_text += page_text
+                
+                # Check if OCR text is just image references (no actual text)
+                is_just_image_refs = all(
+                    text.strip().startswith('![') and text.strip().endswith(')')
+                    for text in page_texts if text.strip()
+                )
+                
+                if is_just_image_refs:
+                    logger.warning(f"OCR only returned image references for seed packet {seed_packet_id}, no actual text was extracted")
+                    ocr_text = "The OCR process could not detect any text in this image. It may be that the text is too small, blurry, or low contrast."
             else:
                 # Fallback to string representation if we can't extract text
                 ocr_text = str(ocr_response)
@@ -860,22 +876,29 @@ async def process_seed_packet_ocr(
             content={"error": f"OCR processing failed: {str(e)}"}
         )
 
-# Extract structured data from OCR results
-@app.post("/seed-packets/{seed_packet_id}/extract-data")
-async def extract_data_from_ocr(
-    seed_packet_id: int,
+# Extract structured data from OCR text
+@app.post("/seed-packets/extract-info")
+async def extract_info_from_ocr(
     request: Request,
-    ocr_text: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    """Extract structured data from OCR text using Mistral AI"""
     try:
-        seed_packet = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
-        if seed_packet is None:
-            raise ResourceNotFoundException("Seed Packet", seed_packet_id)
+        # Parse JSON body
+        body = await request.json()
+        ocr_text = body.get("ocr_text", "")
+        
+        if not ocr_text:
+            logger.error("No OCR text provided in request body")
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No OCR text provided"}
+            )
 
         # Get the API key from configuration
         api_key = get_mistral_api_key()
         if not api_key:
+            logger.error("MISTRAL_API_KEY not set in environment variables")
             return JSONResponse(
                 status_code=500,
                 content={"error": "MISTRAL_API_KEY not set in environment"}
@@ -883,87 +906,99 @@ async def extract_data_from_ocr(
 
         # Initialize Mistral client
         client = Mistral(api_key=api_key)
+        
+        # Log the OCR text we're processing
+        logger.info(f"OCR text to process for extraction (length: {len(ocr_text)})")
+        logger.info(f"First 300 chars of OCR text: {ocr_text[:300]}...")
 
-        # Define prompt to extract structured data
-        prompt = f"""
-Extract structured information from the following seed packet text.
-The text was obtained from OCR and may have formatting issues or errors.
-Please extract the following fields if they are present in the text:
+        # Define prompt for JSON extraction
+        prompt = f"""Extract structured information from the following seed packet text. The text was obtained from OCR and may have errors.
+Return ONLY a valid JSON object with these fields (use null if not found):
 
-- name: The name of the plant/seed (e.g., 'Tomato', 'Basil', 'Carrot')
-- variety: The specific variety (e.g., 'Roma', 'Sweet Thai', 'Nantes')
-- description: A brief description of the plant
-- planting_instructions: Instructions on how to plant
-- days_to_germination: The number of days it takes to germinate (just the number)
-- spacing: Recommended spacing between plants
-- sun_exposure: Light requirements (e.g., 'Full Sun', 'Partial Shade')
+- name: Plant name (e.g. "Tomato", "Basil")
+- variety: Specific variety (e.g. "Roma", "Sweet Thai")
+- description: Brief description
+- planting_instructions: How to plant
+- days_to_germination: Number (remove any text)
+- spacing: Plant spacing
+- sun_exposure: Light requirements
 - soil_type: Soil preferences
 - watering: Watering requirements
 - fertilizer: Fertilizer recommendations
-- package_weight: The weight of the seed packet (just the number in grams)
-- expiration_date: Date format YYYY-MM-DD if present
+- package_weight: Number in grams (remove any text)
+- expiration_date: Format as YYYY-MM-DD
 
-Return ONLY a JSON object with these fields. If information for a field is not available, use null.
+OCR Text:
+{ocr_text}"""
 
-Here's the OCR text from the seed packet:
-
-{ocr_text}
-"""
-
-        # Create chat completion request
+        # Create chat completion request with JSON response format
         messages = [
+            {
+                "role": "system",
+                "content": "You are an expert at extracting seed packet information into structured data."
+            },
             {
                 "role": "user",
                 "content": prompt
             }
         ]
 
-        # Get the chat response
-        logger.info(f"Sending chat completion request for seed packet {seed_packet_id}")
+        # Get the chat response with JSON format specification
+        logger.info("Sending chat completion request for structured data extraction")
         chat_response = client.chat.complete(
             model=MISTRAL_CHAT_MODEL,
-            messages=messages
+            messages=messages,
+            temperature=0.1,
+            response_format={
+                "type": "json_object"
+            }
         )
 
-        # Extract the response content
+        # Extract and parse the JSON response
         response_content = chat_response.choices[0].message.content
-        logger.info(f"Received chat completion response: {response_content[:100]}...")
+        logger.info(f"Received structured response: {response_content[:500]}...")
 
-        # Parse the JSON response
+        # Clean up data types (the response should already be valid JSON)
         import json
-        try:
-            extracted_data = json.loads(response_content)
-            
-            # Clean up and validate the data
-            if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
-                try:
-                    extracted_data["days_to_germination"] = int(extracted_data["days_to_germination"])
-                except (ValueError, TypeError):
-                    extracted_data["days_to_germination"] = None
-            
-            if "package_weight" in extracted_data and extracted_data["package_weight"]:
-                try:
-                    extracted_data["package_weight"] = float(extracted_data["package_weight"])
-                except (ValueError, TypeError):
-                    extracted_data["package_weight"] = None
-            
-            # Format dates properly
-            if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
-                # Simple validation to check if it matches YYYY-MM-DD format
-                import re
-                if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
-                    extracted_data["expiration_date"] = None
-                    
-            return JSONResponse(content=extracted_data)
-        except json.JSONDecodeError:
-            logger.error("Failed to parse JSON from chat completion response")
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Failed to parse structured data from response"}
-            )
-            
+        extracted_data = json.loads(response_content)
+
+        # Clean numeric fields
+        if extracted_data.get("days_to_germination"):
+            try:
+                days = str(extracted_data["days_to_germination"])
+                days = days.split("-")[0] if "-" in days else days  # Take minimum if range
+                extracted_data["days_to_germination"] = int(float(re.sub(r'[^\d.]', '', days)))
+            except (ValueError, TypeError):
+                extracted_data["days_to_germination"] = None
+
+        if extracted_data.get("package_weight"):
+            try:
+                weight = str(extracted_data["package_weight"])
+                extracted_data["package_weight"] = float(re.sub(r'[^\d.]', '', weight))
+            except (ValueError, TypeError):
+                extracted_data["package_weight"] = None
+
+        # Validate date format
+        if extracted_data.get("expiration_date"):
+            try:
+                from dateutil import parser
+                date_str = str(extracted_data["expiration_date"])
+                if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+                    parsed_date = parser.parse(date_str)
+                    extracted_data["expiration_date"] = parsed_date.strftime("%Y-%m-%d")
+            except Exception:
+                extracted_data["expiration_date"] = None
+
+        return JSONResponse(content=extracted_data)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON from response: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to parse structured data from response"}
+        )
     except Exception as e:
-        logger.exception(f"Error extracting structured data", extra={"seed_packet_id": seed_packet_id})
+        logger.exception("Error extracting structured data")
         return JSONResponse(
             status_code=500,
             content={"error": f"Data extraction failed: {str(e)}"}
@@ -1113,7 +1148,7 @@ Extract the following fields to the best of your ability, making reasonable infe
 - watering: Watering requirements or instructions
 - fertilizer: Fertilizer recommendations
 - package_weight: The weight of the seed packet in grams (just the number)
-- expiration_date: Date format YYYY-MM-DD if present (look for "use by", "plant by", "sell by", or similar phrases)
+- expiration_date: Date in YYYY-MM-DD format
 
 Return a valid JSON object that I can parse with JSON.parse() or json.loads().
 Do not include Markdown code block formatting in your response (no ```json prefix or ``` suffix).
@@ -1238,6 +1273,7 @@ Now, carefully analyze this OCR text and extract as much information as possible
                     extracted_data = json.loads(response_content)
             else:
                 # If no code blocks, try parsing the whole response directly
+                logger.info("No code blocks found, trying to parse entire response as JSON")
                 extracted_data = json.loads(response_content.strip())
             
             # Clean up and validate the data
@@ -1275,18 +1311,17 @@ Now, carefully analyze this OCR text and extract as much information as possible
                         extracted_data["expiration_date"] = parsed_date.strftime("%Y-%m-%d")
                     except:
                         extracted_data["expiration_date"] = None
-                    
-            return JSONResponse(content=extracted_data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON from chat completion response: {e}")
-            logger.error(f"Response content was: {response_content}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": "Failed to parse structured data from response"}
-            )
-            
+
+        return JSONResponse(content=extracted_data)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON from response: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to parse structured data from response"}
+        )
     except Exception as e:
-        logger.exception(f"Error extracting structured data from OCR text")
+        logger.exception("Error extracting structured data")
         return JSONResponse(
             status_code=500,
             content={"error": f"Data extraction failed: {str(e)}"}
@@ -1358,64 +1393,80 @@ async def process_ocr_temp(
             # Get original filename for better traceability in the API
             original_filename = image.filename if hasattr(image, 'filename') and image.filename else "uploaded_image"
             
+            # Call the OCR API with structured response format
             ocr_response = client.ocr.process(
                 model=MISTRAL_OCR_MODEL,
                 document={
                     "type": "image_url",
                     "image_url": f"data:image/{image_format};base64,{base64_image}",
-                    "document_name": original_filename  # Added document_name for better traceability
+                    "document_name": original_filename,
+                },
+                response_format={
+                    "type": "json_object"
                 }
             )
+
             logger.info("Received response from Mistral OCR API")
-        except Exception as e:
-            logger.exception(f"Error calling OCR API: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"OCR API call failed: {str(e)}"}
-            )
-        
-        # Extract OCR text from the response
-        ocr_text = ""
-        response_dict = None
-        if hasattr(ocr_response, 'model_dump'):
-            response_dict = ocr_response.model_dump()
-        elif hasattr(ocr_response, '__dict__'):
-            response_dict = ocr_response.__dict__
-        else:
-            import json
-            try:
-                response_dict = json.loads(str(ocr_response))
-            except:
-                response_dict = {"error": "Could not parse response"}
-        
-        # Log the full OCR response for debugging
-        logger.info(f"OCR Response structure: {list(response_dict.keys()) if isinstance(response_dict, dict) else 'Not a dictionary'}")
-        logger.info(f"Response dictionary: {response_dict}")
-        
-        # Extract the markdown text from the pages and check if it's just image references
-        if isinstance(response_dict, dict) and "pages" in response_dict:
-            page_texts = []
             
-            for page in response_dict["pages"]:
-                if "markdown" in page:
-                    page_text = page["markdown"]
-                    page_texts.append(page_text)
-                    
-                    # If we have OCR text, append it
-                    if ocr_text:
-                        ocr_text += "\n\n"
-                    ocr_text += page_text
-                    
-            # Check if OCR text is just image references (no actual text)
-            is_just_image_refs = all(
-                text.strip().startswith('![') and text.strip().endswith(')')
-                for text in page_texts if text.strip()
-            )
+            # Extract text from the structured response
+            response_dict = None
+            if hasattr(ocr_response, 'model_dump'):
+                response_dict = ocr_response.model_dump()
+            elif hasattr(ocr_response, '__dict__'):
+                response_dict = ocr_response.__dict__
+            else:
+                # Try to convert directly to dict if it's a JSON response
+                import json
+                try:
+                    response_dict = json.loads(str(ocr_response))
+                except:
+                    response_dict = {"error": "Could not parse response"}
+
+            logger.info(f"Response dictionary structure: {response_dict.keys() if isinstance(response_dict, dict) else 'Not a dictionary'}")
             
-            if is_just_image_refs:
+            # Extract OCR text from the structured response
+            ocr_text = ""
+            if isinstance(response_dict, dict):
+                if "text" in response_dict:
+                    # If the API returns a direct text field
+                    ocr_text = response_dict["text"]
+                elif "content" in response_dict:
+                    # If the text is in a content field
+                    ocr_text = response_dict["content"]
+                elif "pages" in response_dict:
+                    # If using the page-based format
+                    page_texts = []
+                    for page in response_dict["pages"]:
+                        if isinstance(page, dict):
+                            # Try different possible text field names
+                            text = page.get("text") or page.get("content") or page.get("markdown", "")
+                            if text:
+                                page_texts.append(text)
+                    
+                    ocr_text = "\n\n".join(page_texts)
+
+            # If we still don't have text, try the full response as a string
+            if not ocr_text:
+                ocr_text = str(ocr_response)
+
+            # Check if the text is meaningful
+            if not ocr_text or ocr_text.isspace():
+                logger.warning("OCR returned empty or whitespace-only text")
+                return JSONResponse(
+                    content={
+                        "status": "warning",
+                        "image_path": image_path,
+                        "ocr_text": "No text could be extracted from this image.",
+                        "warning": "OCR process didn't find text in the image"
+                    }
+                )
+
+            # Check if it's just image references
+            if all(
+                line.strip().startswith('![') and line.strip().endswith(')')
+                for line in ocr_text.split('\n') if line.strip()
+            ):
                 logger.warning("OCR only returned image references, no actual text was extracted")
-                
-                # Return the error with the image path so the frontend can still show the image
                 return JSONResponse(
                     content={
                         "status": "warning",
@@ -1424,20 +1475,12 @@ async def process_ocr_temp(
                         "warning": "OCR process didn't find text in the image"
                     }
                 )
-        else:
-            # Fallback to string representation if we can't extract text
-            ocr_text = str(ocr_response)
         
-        # Check if OCR extracted any meaningful text
-        if not ocr_text or ocr_text.isspace():
-            logger.warning("OCR returned empty or whitespace-only text")
+        except Exception as e:
+            logger.exception(f"Error calling OCR API: {str(e)}")
             return JSONResponse(
-                content={
-                    "status": "warning",
-                    "image_path": image_path,
-                    "ocr_text": "No text could be extracted from this image.",
-                    "warning": "OCR process didn't find text in the image"
-                }
+                status_code=500,
+                content={"error": f"OCR API call failed: {str(e)}"}
             )
         
         # Log the extracted OCR text
