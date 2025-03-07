@@ -1092,7 +1092,7 @@ async def extract_data_from_ocr_temp(
         # Initialize Mistral client
         client = Mistral(api_key=api_key)
 
-        # Define prompt to extract structured data
+        # Define prompt to extract structured data with few-shot examples
         prompt = f"""
 Extract structured information from the following seed packet text.
 The text was obtained from OCR and may have formatting issues or errors.
@@ -1111,9 +1111,49 @@ Please extract the following fields if they are present in the text:
 - package_weight: The weight of the seed packet (just the number in grams)
 - expiration_date: Date format YYYY-MM-DD if present
 
+I need a valid JSON object that I can parse with JSON.parse() or json.loads().
+Do not include Markdown code block formatting in your response, no ```json prefix or ``` suffix.
 Return ONLY a JSON object with these fields. If information for a field is not available, use null.
 
-Here's the OCR text from the seed packet:
+Example 1:
+Input OCR text: "Cherry Tomato. Sweet 100. A productive cherry tomato with sweet fruits. Plant in full sun. Days to germination: 7-10. Spacing: 12-24 inches apart. Water regularly. Plant after danger of frost has passed. Net Wt: 0.3g. Best by: 2024-12-01"
+
+Expected Output:
+{{
+  "name": "Tomato",
+  "variety": "Sweet 100",
+  "description": "A productive cherry tomato with sweet fruits",
+  "planting_instructions": "Plant after danger of frost has passed",
+  "days_to_germination": 7,
+  "spacing": "12-24 inches apart",
+  "sun_exposure": "Full sun",
+  "soil_type": null,
+  "watering": "Water regularly",
+  "fertilizer": null,
+  "package_weight": 0.3,
+  "expiration_date": "2024-12-01"
+}}
+
+Example 2:
+Input OCR text: "Basil. Planting depth: 1/4 inch. Plant in well-drained soil. Keep soil moist. Germination: 5-10 days. Full sun."
+
+Expected Output:
+{{
+  "name": "Basil",
+  "variety": null,
+  "description": null,
+  "planting_instructions": "Planting depth: 1/4 inch. Plant in well-drained soil.",
+  "days_to_germination": 5,
+  "spacing": null,
+  "sun_exposure": "Full sun",
+  "soil_type": "Well-drained soil",
+  "watering": "Keep soil moist",
+  "fertilizer": null,
+  "package_weight": null,
+  "expiration_date": null
+}}
+
+Now process this OCR text:
 
 {ocr_text}
 """
@@ -1135,17 +1175,42 @@ Here's the OCR text from the seed packet:
 
         # Extract the response content
         response_content = chat_response.choices[0].message.content
-        logger.info(f"Received chat completion response: {response_content[:100]}...")
+        logger.info(f"Received chat completion response: {response_content[:500]}...")  # Log more content for debugging
 
-        # Parse the JSON response
+        # Parse the JSON response, handling potential code blocks
         import json
+        import re
+        
         try:
-            extracted_data = json.loads(response_content)
+            # Try to find JSON in code blocks first (```json...``` or ```...```)
+            json_pattern = r'```(?:json)?(.*?)```'
+            json_matches = re.findall(json_pattern, response_content, re.DOTALL)
+            
+            if json_matches:
+                # Use the first match that can be parsed as JSON
+                for match in json_matches:
+                    try:
+                        cleaned_json = match.strip()
+                        extracted_data = json.loads(cleaned_json)
+                        logger.info(f"Successfully parsed JSON from code block: {cleaned_json[:100]}...")
+                        break
+                    except json.JSONDecodeError:
+                        continue
+                else:  # If no match could be parsed
+                    # Try parsing the whole response directly
+                    extracted_data = json.loads(response_content)
+            else:
+                # If no code blocks, try parsing the whole response directly
+                extracted_data = json.loads(response_content)
             
             # Clean up and validate the data
             if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
                 try:
-                    extracted_data["days_to_germination"] = int(extracted_data["days_to_germination"])
+                    # If it's a range like "7-10", take the minimum value
+                    if isinstance(extracted_data["days_to_germination"], str) and "-" in extracted_data["days_to_germination"]:
+                        extracted_data["days_to_germination"] = int(extracted_data["days_to_germination"].split("-")[0])
+                    else:
+                        extracted_data["days_to_germination"] = int(extracted_data["days_to_germination"])
                 except (ValueError, TypeError):
                     extracted_data["days_to_germination"] = None
             
@@ -1161,10 +1226,12 @@ Here's the OCR text from the seed packet:
                 import re
                 if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
                     extracted_data["expiration_date"] = None
-                    
+            
+            logger.info(f"Final extracted data: {extracted_data}")
             return JSONResponse(content=extracted_data)
-        except json.JSONDecodeError:
-            logger.error("Failed to parse JSON from chat completion response")
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON from chat completion response: {e}")
+            logger.error(f"Response content was: {response_content}")
             return JSONResponse(
                 status_code=500,
                 content={"error": "Failed to parse structured data from response"}
