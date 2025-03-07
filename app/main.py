@@ -700,223 +700,75 @@ async def process_seed_packet_ocr(
     request: Request,
     db: Session = Depends(get_db)
 ):
+    """Simple OCR extraction for seed packet images"""
     try:
+        # Get the seed packet
         seed_packet = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
         if seed_packet is None:
-            raise ResourceNotFoundException("Seed Packet", seed_packet_id)
+            return JSONResponse(status_code=404, content={"error": "Seed packet not found"})
+            
+        # Check if there's an image
         if not seed_packet.image_path:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "No image available for this seed packet"}
-            )
-        # Get the API key from configuration
+            return JSONResponse(status_code=400, content={"error": "No image available for this seed packet"})
+            
+        # Get the API key
         api_key = get_mistral_api_key()
         if not api_key:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "MISTRAL_API_KEY not set in environment"}
-            )
+            return JSONResponse(status_code=500, content={"error": "MISTRAL_API_KEY not set"})
+            
         # Initialize Mistral client
         client = Mistral(api_key=api_key)
-        # Clean up the image path - it might start with "/" or "static/"
-        image_path = seed_packet.image_path
-        # Remove initial '/' if present
-        if image_path.startswith('/'):
-            image_path = image_path[1:]
-        # Add "app/" prefix if not already there and if it doesn't start with "static/"
-        if not image_path.startswith('app/'):
-            if image_path.startswith('static/'):
-                image_path = f"app/{image_path}"
-            else:
-                image_path = f"app/static/{image_path}"
         
+        # Prepare the image path
+        image_path = seed_packet.image_path
+        if not image_path.startswith('/'):
+            image_path = f"app/static/{image_path}"
+        else:
+            image_path = f"app{image_path}"
+            
         logger.info(f"Processing OCR for seed packet image: {image_path}")
         
-        # Print debug info
-        import os
-        if os.path.exists(image_path):
-            logger.info(f"Image file exists at {image_path}")
-            # Get and log image file size
-            file_size = os.path.getsize(image_path)
-            logger.info(f"Image file size: {file_size} bytes")
-        else:
-            logger.error(f"Image file does not exist at {image_path}")
-            # Try to list the directory to see what's there
-            dir_path = os.path.dirname(image_path)
-            if os.path.exists(dir_path):
-                logger.info(f"Contents of {dir_path}: {os.listdir(dir_path)}")
-            else:
-                logger.error(f"Directory {dir_path} does not exist")
-        
-        # Try to preprocess the image to improve OCR results if PIL is available
-        preprocessed_image_path = None
-        try:
-            from PIL import Image, ImageEnhance, ImageFilter
-            import tempfile
+        # Check if file exists
+        if not os.path.exists(image_path):
+            return JSONResponse(status_code=404, content={"error": "Image file not found"})
             
-            logger.info("Attempting to preprocess image for better OCR results")
-            # Create a temporary file for the processed image
-            fd, preprocessed_image_path = tempfile.mkstemp(suffix='.jpg')
-            os.close(fd)
-            
-            # Open the image
-            img = Image.open(image_path)
-            
-            # Convert to RGB if needed (in case it's RGBA with transparency)
-            if img.mode == 'RGBA':
-                img = img.convert('RGB')
-                
-            # Resize if the image is very large (preserves detail but reduces processing time)
-            max_size = 2000
-            if max(img.size) > max_size:
-                logger.info(f"Resizing large image from {img.size}")
-                img.thumbnail((max_size, max_size), Image.LANCZOS)
-                logger.info(f"Image resized to {img.size}")
-            
-            # Enhance contrast to make text more visible
-            enhancer = ImageEnhance.Contrast(img)
-            img = enhancer.enhance(1.5)  # Increase contrast by 50%
-            
-            # Sharpen to make text edges crisper
-            img = img.filter(ImageFilter.SHARPEN)
-            
-            # Save the preprocessed image
-            img.save(preprocessed_image_path, 'JPEG', quality=95)
-            logger.info(f"Image preprocessed and saved to {preprocessed_image_path}")
-            
-            # Use the preprocessed image instead of the original
-            image_to_process = preprocessed_image_path
-        except ImportError:
-            logger.warning("PIL not available for image preprocessing, using original image")
-            image_to_process = image_path
-        except Exception as e:
-            logger.warning(f"Image preprocessing failed: {str(e)}, using original image")
-            image_to_process = image_path
-        
         # Base64 encode the image
         import base64
-        try:
-            with open(image_to_process, "rb") as image_file:
-                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-                
-            # Determine image format from the file extension
-            image_format = "jpeg"  # Default format
-            if image_to_process.lower().endswith(".png"):
-                image_format = "png"
-            elif image_to_process.lower().endswith(".gif"):
-                image_format = "gif"
-            elif image_to_process.lower().endswith((".jpg", ".jpeg")):
-                image_format = "jpeg"
+        with open(image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
             
-            # Log more detailed information about the API call
-            logger.info(f"Calling OCR API with image format: {image_format}, base64 length: {len(base64_image)}")
+        # Determine format from extension
+        image_format = "jpeg"  # Default format
+        if image_path.lower().endswith(".png"):
+            image_format = "png"
+        elif image_path.lower().endswith((".jpg", ".jpeg")):
+            image_format = "jpeg"
             
-            # Call the OCR API with base64-encoded image
-            ocr_response = client.ocr.process(
-                model="mistral-ocr-latest",
-                document={
-                    "type": "image_url",
-                    "image_url": f"data:image/{image_format};base64,{base64_image}"
-                }
-            )
-            
-            # Extract OCR text from the response based on the structure:
-            # {
-            #   "pages": [
-            #     {
-            #       "index": 0,
-            #       "markdown": "string",
-            #       ...
-            #     }
-            #   ],
-            #   ...
-            # }
-            
-            # Convert response to a dictionary to handle the JSON structure
-            response_dict = None
-            if hasattr(ocr_response, 'model_dump'):
-                # For Pydantic models
-                response_dict = ocr_response.model_dump()
-            elif hasattr(ocr_response, '__dict__'):
-                # For regular objects
-                response_dict = ocr_response.__dict__
-            else:
-                # Try to convert directly to dict if it's a JSON response
-                import json
-                try:
-                    response_dict = json.loads(str(ocr_response))
-                except:
-                    response_dict = {"error": "Could not parse response"}
-            
-            logger.info(f"Response keys: {list(response_dict.keys()) if isinstance(response_dict, dict) else 'Not a dictionary'}")
-            
-            # Extract the markdown text from the pages
-            ocr_text = ""
-            if isinstance(response_dict, dict) and "pages" in response_dict:
-                page_texts = []
-                
+        # Make simple OCR call
+        ocr_response = client.ocr.process(
+            model="mistral-ocr-latest",
+            document={
+                "type": "image_url",
+                "image_url": f"data:image/{image_format};base64,{base64_image}"
+            }
+        )
+        
+        # Extract text simply
+        ocr_text = ""
+        if hasattr(ocr_response, 'model_dump'):
+            response_dict = ocr_response.model_dump()
+            if "pages" in response_dict:
                 for page in response_dict["pages"]:
                     if "markdown" in page:
-                        page_text = page["markdown"]
-                        page_texts.append(page_text)
-                        
-                        # If we have OCR text, append it
-                        if ocr_text:
-                            ocr_text += "\n\n"
-                        ocr_text += page_text
-                
-                # Check if OCR text is just image references (no actual text)
-                is_just_image_refs = all(
-                    text.strip().startswith('![') and text.strip().endswith(')')
-                    for text in page_texts if text.strip()
-                )
-                
-                # Check if there's any content at all
-                is_empty = not ''.join(page_texts).strip()
-                
-                if is_just_image_refs or is_empty:
-                    logger.warning(f"OCR only returned image references or empty content for seed packet {seed_packet_id}")
-                    
-                    # Fall back to OCR using a different model or approach
-                    logger.info("Trying alternative OCR approach...")
-                    
-                    # Create a note explaining the issue but don't fail the process
-                    ocr_text = "The OCR process detected an image but couldn't extract text. This could be due to:\n"
-                    ocr_text += "- Text being too small or unclear\n"
-                    ocr_text += "- Low contrast between text and background\n"
-                    ocr_text += "- Unusual font styles\n\n"
-                    ocr_text += "Try taking a clearer photo of the seed packet in good lighting, focusing on text areas."
-            else:
-                # Fallback to string representation if we can't extract text
-                ocr_text = str(ocr_response)
-            
-            logger.info(f"Extracted OCR text: {ocr_text[:100]}...")  # Log first 100 chars
-            
-            # Clean up the temporary preprocessed image if it exists
-            if preprocessed_image_path and os.path.exists(preprocessed_image_path):
-                try:
-                    os.unlink(preprocessed_image_path)
-                    logger.info(f"Removed temporary preprocessed image: {preprocessed_image_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove temporary image: {str(e)}")
-            
-        except FileNotFoundError:
-            logger.error(f"Image file not found: {image_path}")
-            return JSONResponse(
-                status_code=500, 
-                content={"error": f"Image file not found: {image_path}"}
-            )
-        except Exception as e:
-            logger.error(f"Error processing image: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Error processing image: {str(e)}"}
-            )
-        # Create a note with the OCR results
-        note_body = f"OCR Results:\n\n{ocr_text}"
+                        ocr_text += page["markdown"] + "\n\n"
         
+        # If we get no text, provide a simple message
+        if not ocr_text.strip():
+            ocr_text = "No text could be extracted from the image."
+            
+        # Create a note with the OCR results
         db_note = models.Note(
-            body=note_body,
+            body=f"OCR Results:\n\n{ocr_text}",
             seed_packet_id=seed_packet_id
         )
         
@@ -924,25 +776,14 @@ async def process_seed_packet_ocr(
         db.commit()
         db.refresh(db_note)
         
-        logger.info(f"Created note with OCR results for seed packet: {seed_packet_id}")
-        return JSONResponse(
-            content={
-                "status": "success",
-                "note_id": db_note.id,
-                "ocr_text": ocr_text
-            }
-        )
+        # Return just the text
+        return JSONResponse(content={"status": "success", "ocr_text": ocr_text})
         
-    except ResourceNotFoundException:
-        raise
     except Exception as e:
-        logger.exception(f"Error processing OCR for seed packet", extra={"seed_packet_id": seed_packet_id})
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"OCR processing failed: {str(e)}"}
-        )
-
-# Extract structured data from OCR results
+        logger.exception(f"Error in OCR: {str(e)}")
+        return JSONResponse(status_code=500, content={"error": f"OCR failed: {str(e)}"})
+        
+# Keep only the extract structured data endpoint as a simplified version
 @app.post("/seed-packets/{seed_packet_id}/extract-data")
 async def extract_data_from_ocr(
     seed_packet_id: int,
@@ -950,668 +791,73 @@ async def extract_data_from_ocr(
     ocr_text: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    """Extract structured data from OCR text"""
     try:
+        # Basic validation
         seed_packet = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
         if seed_packet is None:
-            raise ResourceNotFoundException("Seed Packet", seed_packet_id)
+            return JSONResponse(status_code=404, content={"error": "Seed packet not found"})
 
-        # Get the API key from configuration
+        # Get API key
         api_key = get_mistral_api_key()
         if not api_key:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "MISTRAL_API_KEY not set in environment"}
-            )
+            return JSONResponse(status_code=500, content={"error": "MISTRAL_API_KEY not set"})
 
-        # Initialize Mistral client
+        # Initialize client
         client = Mistral(api_key=api_key)
 
-        # Define prompt to extract structured data
+        # Simple prompt
         prompt = f"""
-Extract structured information from the following seed packet text.
-The text was obtained from OCR and may have formatting issues or errors.
-Please extract the following fields if they are present in the text:
-
-- name: The name of the plant/seed (e.g., 'Tomato', 'Basil', 'Carrot')
-- variety: The specific variety (e.g., 'Roma', 'Sweet Thai', 'Nantes')
-- description: A brief description of the plant
-- planting_instructions: Instructions on how to plant
-- days_to_germination: The number of days it takes to germinate (just the number)
-- spacing: Recommended spacing between plants
-- sun_exposure: Light requirements (e.g., 'Full Sun', 'Partial Shade')
+Extract these fields from the seed packet text (return as JSON):
+- name: Plant name (e.g., "Tomato")
+- variety: Variety name (e.g., "Roma")
+- description: Brief description
+- planting_instructions: How to plant
+- days_to_germination: Number of days (just the number)
+- spacing: Recommended spacing
+- sun_exposure: Light requirements
 - soil_type: Soil preferences
-- watering: Watering requirements
+- watering: Watering instructions
 - fertilizer: Fertilizer recommendations
-- package_weight: The weight of the seed packet (just the number in grams)
-- expiration_date: Date format YYYY-MM-DD if present
+- package_weight: Weight in grams (just the number)
+- expiration_date: Date in YYYY-MM-DD format
 
-Return ONLY a JSON object with these fields. If information for a field is not available, use null.
+Only return a JSON object with these fields. Use null for missing information.
 
-Here's the OCR text from the seed packet:
-
+Text from seed packet:
 {ocr_text}
 """
-
-        # Create chat completion request
+        # Simple message structure
         messages = [
-            {
-                "role": "user",
-                "content": prompt
-            }
+            {"role": "user", "content": prompt}
         ]
 
-        # Get the chat response
-        logger.info(f"Sending chat completion request for seed packet {seed_packet_id}")
+        # Make API call
         chat_response = client.chat.complete(
             model=MISTRAL_CHAT_MODEL,
             messages=messages
         )
 
-        # Extract the response content
+        # Extract response
         response_content = chat_response.choices[0].message.content
-        logger.info(f"Received chat completion response: {response_content[:100]}...")
-
-        # Parse the JSON response
+        
+        # Basic parsing
         import json
         try:
             extracted_data = json.loads(response_content)
-            
-            # Clean up and validate the data
-            if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
-                try:
-                    extracted_data["days_to_germination"] = int(extracted_data["days_to_germination"])
-                except (ValueError, TypeError):
-                    extracted_data["days_to_germination"] = None
-            
-            if "package_weight" in extracted_data and extracted_data["package_weight"]:
-                try:
-                    extracted_data["package_weight"] = float(extracted_data["package_weight"])
-                except (ValueError, TypeError):
-                    extracted_data["package_weight"] = None
-            
-            # Format dates properly
-            if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
-                # Simple validation to check if it matches YYYY-MM-DD format
-                import re
-                if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
-                    extracted_data["expiration_date"] = None
-                    
             return JSONResponse(content=extracted_data)
         except json.JSONDecodeError:
-            logger.error("Failed to parse JSON from chat completion response")
             return JSONResponse(
                 status_code=500,
-                content={"error": "Failed to parse structured data from response"}
+                content={"error": "Could not parse response as JSON"}
             )
             
     except Exception as e:
-        logger.exception(f"Error extracting structured data", extra={"seed_packet_id": seed_packet_id})
+        logger.exception(f"Error extracting data: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"error": f"Data extraction failed: {str(e)}"}
         )
-
-# New endpoint for uploading an image and processing it with OCR immediately
-@app.post("/seed-packets/upload-and-ocr")
-async def upload_and_ocr_image(
-    image: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
-    """Upload a seed packet image and process it with OCR in one step"""
-    try:
-        # Check if Mistral API key is available
-        api_key = get_mistral_api_key()
-        if not api_key:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "MISTRAL_API_KEY not set in environment"}
-            )
-
-        # First, save the uploaded image
-        image_path = save_upload_file(image)
-        if not image_path:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Failed to save uploaded image"}
-            )
-
-        # Initialize Mistral client
-        client = Mistral(api_key=api_key)
-
-        # Clean up the image path for processing
-        processed_image_path = image_path
-        if processed_image_path.startswith('/'):
-            processed_image_path = processed_image_path[1:]
-        
-        # Add "app/" prefix if not already there
-        if not processed_image_path.startswith('app/'):
-            processed_image_path = f"app/{processed_image_path}"
-        
-        logger.info(f"Processing OCR for uploaded image: {processed_image_path}")
-
-        # Base64 encode the image for OCR
-        import base64
-        with open(processed_image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-            
-        # Determine image format from the file extension
-        image_format = "jpeg"  # Default format
-        if processed_image_path.lower().endswith(".png"):
-            image_format = "png"
-        elif processed_image_path.lower().endswith(".gif"):
-            image_format = "gif"
-        elif processed_image_path.lower().endswith((".jpg", ".jpeg")):
-            image_format = "jpeg"
-
-        # Process with OCR
-        ocr_response = client.ocr.process(
-            model=MISTRAL_OCR_MODEL,
-            document={
-                "type": "image_url",
-                "image_url": f"data:image/{image_format};base64,{base64_image}"
-            }
-        )
-        
-        # Extract OCR text
-        ocr_text = ""
-        response_dict = None
-        if hasattr(ocr_response, 'model_dump'):
-            response_dict = ocr_response.model_dump()
-        elif hasattr(ocr_response, '__dict__'):
-            response_dict = ocr_response.__dict__
-        else:
-            import json
-            try:
-                response_dict = json.loads(str(ocr_response))
-            except:
-                response_dict = {"error": "Could not parse response"}
-        
-        logger.info(f"Response dictionary: {response_dict}")
-        
-        # Extract the markdown text from the pages
-        if isinstance(response_dict, dict) and "pages" in response_dict:
-            for page in response_dict["pages"]:
-                if "markdown" in page:
-                    if ocr_text:
-                        ocr_text += "\n\n"
-                    ocr_text += page["markdown"]
-        else:
-            # Fallback to string representation if we can't extract text
-            ocr_text = str(ocr_response)
-        
-        # Return OCR text and image path
-        return JSONResponse(
-            content={
-                "status": "success",
-                "image_path": image_path,
-                "ocr_text": ocr_text
-            }
-        )
-            
-    except Exception as e:
-        logger.exception(f"Error processing OCR for uploaded image")
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"OCR processing failed: {str(e)}"}
-        )
-
-# Endpoint to extract data from OCR text without needing a specific seed packet ID
-@app.post("/seed-packets/extract-data-temp")
-async def extract_data_from_ocr_temp(
-    ocr_text: str = Form(...),
-    db: Session = Depends(get_db)
-):
-    try:
-        # Get the API key from configuration
-        api_key = get_mistral_api_key()
-        if not api_key:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "MISTRAL_API_KEY not set in environment"}
-            )
-        # Initialize Mistral client
-        client = Mistral(api_key=api_key)
-        # Log the OCR text input
-        logger.info(f"OCR text to process: {ocr_text[:500]}...")
-        # Define prompt to extract structured data
-        prompt = """...existing prompt text..."""
-
-        # Create chat completion request
-        messages = [
-            {
-                "role": "system",
-                "content": "You are an expert seed packet information extraction expert. Your task is to extract structured information from OCR text of seed packets, providing the most accurate data possible."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-
-        # Get the chat response
-        chat_response = client.chat.complete(
-            model=MISTRAL_CHAT_MODEL,
-            messages=messages,
-            temperature=0.2
-        )
-
-        # Extract and process response
-        response_content = chat_response.choices[0].message.content
-        extracted_data = process_chat_response(response_content)
-        
-        return JSONResponse(content=extracted_data)
-    except Exception as e:
-        logger.exception(f"Error extracting structured data")
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Data extraction failed: {str(e)}"}
-        )
-
-# OCR endpoint for temporary image upload (not attached to an existing seed packet)
-@app.post("/seed-packets/ocr-temp")
-async def process_ocr_temp(
-    image: UploadFile = File(...),
-    db: Session = Depends(get_db)
-):
-    """Process OCR on an uploaded image without saving it to a specific seed packet"""
-    try:
-        # Check if Mistral API key is available
-        api_key = get_mistral_api_key()
-        if not api_key:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "MISTRAL_API_KEY not set in environment"}
-            )
-        
-        # Save the uploaded image temporarily
-        image_path = save_upload_file(image)
-        if not image_path:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Failed to save uploaded image"}
-            )
-
-        # Initialize Mistral client
-        client = Mistral(api_key=api_key)
-
-        # Prepare the image path for processing
-        processed_image_path = f"app/static/{image_path}" if not image_path.startswith('app/') else image_path
-        logger.info(f"Processing OCR for uploaded image: {processed_image_path}")
-        
-        # Log image properties
-        import os
-        if os.path.exists(processed_image_path):
-            file_size = os.path.getsize(processed_image_path)
-            logger.info(f"Image file exists, size: {file_size} bytes")
-        else:
-            logger.error(f"Image file does not exist: {processed_image_path}")
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Image file not found"}
-            )
-
-        # Base64 encode the image
-        import base64
-        with open(processed_image_path, "rb") as image_file:
-            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-            logger.info(f"Base64 encoded image length: {len(base64_image)} characters")
-            
-        # Determine image format from the file extension
-        image_format = "jpeg"  # Default format
-        if processed_image_path.lower().endswith(".png"):
-            image_format = "png"
-        elif processed_image_path.lower().endswith(".gif"):
-            image_format = "gif"
-        elif processed_image_path.lower().endswith((".jpg", ".jpeg")):
-            image_format = "jpeg"
-        
-        logger.info(f"Using image format: {image_format}")
-
-        # Call the OCR API with more detailed logging
-        logger.info(f"Calling Mistral OCR API with model: {MISTRAL_OCR_MODEL}")
-        try:
-            # Get original filename for better traceability in the API
-            original_filename = image.filename if hasattr(image, 'filename') and image.filename else "uploaded_image"
-            
-            ocr_response = client.ocr.process(
-                model=MISTRAL_OCR_MODEL,
-                document={
-                    "type": "image_url",
-                    "image_url": f"data:image/{image_format};base64,{base64_image}",
-                    "document_name": original_filename  # Added document_name for better traceability
-                }
-            )
-            logger.info("Received response from Mistral OCR API")
-        except Exception as e:
-            logger.exception(f"Error calling OCR API: {str(e)}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"OCR API call failed: {str(e)}"}
-            )
-        
-        # Extract OCR text from the response
-        ocr_text = ""
-        response_dict = None
-        if hasattr(ocr_response, 'model_dump'):
-            response_dict = ocr_response.model_dump()
-        elif hasattr(ocr_response, '__dict__'):
-            response_dict = ocr_response.__dict__
-        else:
-            import json
-            try:
-                response_dict = json.loads(str(ocr_response))
-            except:
-                response_dict = {"error": "Could not parse response"}
-        
-        # Log the full OCR response for debugging
-        logger.info(f"OCR Response structure: {list(response_dict.keys()) if isinstance(response_dict, dict) else 'Not a dictionary'}")
-        logger.info(f"Response dictionary: {response_dict}")
-        
-        # Extract the markdown text from the pages and check if it's just image references
-        if isinstance(response_dict, dict) and "pages" in response_dict:
-            page_texts = []
-            
-            for page in response_dict["pages"]:
-                if "markdown" in page:
-                    page_text = page["markdown"]
-                    page_texts.append(page_text)
-                    
-                    # If we have OCR text, append it
-                    if ocr_text:
-                        ocr_text += "\n\n"
-                    ocr_text += page_text
-                    
-            # Check if OCR text is just image references (no actual text)
-            is_just_image_refs = all(
-                text.strip().startswith('![') and text.strip().endswith(')')
-                for text in page_texts if text.strip()
-            )
-            
-            if is_just_image_refs:
-                logger.warning("OCR only returned image references, no actual text was extracted")
-                
-                # Return the error with the image path so the frontend can still show the image
-                return JSONResponse(
-                    content={
-                        "status": "warning",
-                        "image_path": image_path,
-                        "ocr_text": "No text could be extracted from this image. The OCR process detected only image content.",
-                        "warning": "OCR process didn't find text in the image"
-                    }
-                )
-        else:
-            # Fallback to string representation if we can't extract text
-            ocr_text = str(ocr_response)
-        
-        # Check if OCR extracted any meaningful text
-        if not ocr_text or ocr_text.isspace():
-            logger.warning("OCR returned empty or whitespace-only text")
-            return JSONResponse(
-                content={
-                    "status": "warning",
-                    "image_path": image_path,
-                    "ocr_text": "No text could be extracted from this image.",
-                    "warning": "OCR process didn't find text in the image"
-                }
-            )
-        
-        # Log the extracted OCR text
-        logger.info(f"Extracted OCR text (first 300 chars): {ocr_text[:300]}...")
-        logger.info(f"OCR text length: {len(ocr_text)} characters")
-        
-        # Return OCR text and image path
-        return JSONResponse(
-            content={
-                "status": "success",
-                "image_path": image_path,
-                "ocr_text": ocr_text
-            }
-        )
-            
-    except Exception as e:
-        logger.exception(f"Error processing OCR for uploaded image: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"OCR processing failed: {str(e)}"}
-        )
-
-# Structured data extraction from OCR text
-@app.post("/seed-packets/extract-info")
-async def extract_info_from_ocr(
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    """Extract structured data from OCR text using Mistral AI"""
-    try:
-        # Parse JSON body
-        body = await request.json()
-        ocr_text = body.get("ocr_text", "")
-        
-        if not ocr_text:
-            logger.error("No OCR text provided in request body")
-            return JSONResponse(
-                status_code=400,
-                content={"error": "No OCR text provided"}
-            )
-
-        # Get the API key from configuration
-        api_key = get_mistral_api_key()
-        if not api_key:
-            logger.error("MISTRAL_API_KEY not set in environment variables")
-            return JSONResponse(
-                status_code=500,
-                content={"error": "MISTRAL_API_KEY not set in environment"}
-            )
-
-        # Initialize Mistral client
-        client = Mistral(api_key=api_key)
-        
-        # Log the OCR text we're processing
-        logger.info(f"OCR text to process for extraction (length: {len(ocr_text)})")
-        logger.info(f"First 300 chars of OCR text: {ocr_text[:300]}...")
-
-        # Create a simple, clear prompt
-        prompt = f"""You are a seed packet analyzer. I have an image of a seed packet and I've run OCR on it.
-Please extract the following information from the OCR text and format it as a simple JSON object.
-
-For each field, extract ONLY if present in the text. Otherwise, use null:
-
-1. name: The name of the plant (example: "Tomato", "Basil", "Carrot")
-2. variety: The specific variety name (example: "Roma", "Brandywine", "Sweet Thai", "Nantes")
-3. description: A brief description of the plant or product
-4. planting_instructions: Step-by-step planting guidance
-5. days_to_germination: Number of days to germination (just the number)
-6. spacing: Recommended spacing between plants
-7. sun_exposure: Light requirements (Full Sun, Partial Shade, etc.)
-8. soil_type: Soil recommendations
-9. watering: Watering instructions
-10. fertilizer: Fertilizer recommendations
-11. package_weight: Weight in grams (just the number)
-12. expiration_date: Date in YYYY-MM-DD format
-
-Only return a valid JSON object containing these 12 fields and null values for missing information.
-Do NOT include code block formatting, explanations, or any text outside the JSON object.
-
-Here's the OCR text from the seed packet:
-
-{ocr_text}
-"""
-
-        # Create chat completion request with system and user messages
-        messages = [
-            {
-                "role": "system",
-                "content": "You are an expert seed packet information extractor. Return ONLY a valid JSON object with no text outside the JSON."
-            },
-            {
-                "role": "user", 
-                "content": prompt
-            }
-        ]
-
-        # Log that we're sending the request
-        logger.info(f"Sending chat completion request to Mistral API for data extraction")
-        
-        # Get the chat response with low temperature for more deterministic results
-        chat_response = client.chat.complete(
-            model=MISTRAL_CHAT_MODEL,
-            messages=messages,
-            temperature=0.1
-        )
-
-        # Extract the response content
-        response_content = chat_response.choices[0].message.content
-        
-        # Log the response for debugging
-        logger.info(f"Raw chat completion response from Mistral API (first 500 chars): {response_content[:500]}...")
-        logger.info(f"Response length: {len(response_content)}")
-
-        # Parse JSON from the response, handling any code blocks
-        import json
-        import re
-
-        # Try to find JSON in the response
-        try:
-            # First check if response is wrapped in code blocks
-            code_block_pattern = r'```(?:json)?(.*?)```'
-            match = re.search(code_block_pattern, response_content, re.DOTALL)
-            
-            if match:
-                # Extract JSON from code block
-                json_str = match.group(1).strip()
-                logger.info(f"Found JSON in code block (first 100 chars): {json_str[:100]}...")
-                extracted_data = json.loads(json_str)
-            else:
-                # Try to parse the entire response as JSON
-                logger.info("No code block found, trying to parse entire response as JSON")
-                extracted_data = json.loads(response_content.strip())
-            
-            # Clean up data types
-            if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
-                try:
-                    # Handle ranges like "7-10 days"
-                    dgerm = str(extracted_data["days_to_germination"])
-                    if "-" in dgerm:
-                        dgerm = dgerm.split("-")[0]  # Take minimum value
-                    # Remove non-numeric characters
-                    dgerm = re.sub(r'[^\d.]', '', dgerm)
-                    extracted_data["days_to_germination"] = int(float(dgerm))
-                    logger.info(f"Cleaned days_to_germination: {extracted_data['days_to_germination']}")
-                except Exception as e:
-                    logger.warning(f"Could not parse days_to_germination: {e}")
-                    extracted_data["days_to_germination"] = None
-            
-            if "package_weight" in extracted_data and extracted_data["package_weight"]:
-                try:
-                    # Handle string with units like "0.5g"
-                    weight_str = str(extracted_data["package_weight"])
-                    weight_str = re.sub(r'[^\d.]', '', weight_str)  # Remove non-numeric chars
-                    extracted_data["package_weight"] = float(weight_str)
-                    logger.info(f"Cleaned package_weight: {extracted_data['package_weight']}")
-                except Exception as e:
-                    logger.warning(f"Could not parse package_weight: {e}")
-                    extracted_data["package_weight"] = None
-            
-            # Format dates
-            if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
-                # Check if already in YYYY-MM-DD format
-                if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
-                    try:
-                        from dateutil import parser
-                        date_str = str(extracted_data["expiration_date"])
-                        parsed_date = parser.parse(date_str)
-                        extracted_data["expiration_date"] = parsed_date.strftime("%Y-%m-%d")
-                        logger.info(f"Parsed expiration_date: {extracted_data['expiration_date']}")
-                    except Exception as e:
-                        logger.warning(f"Could not parse expiration_date: {e}")
-                        extracted_data["expiration_date"] = None
-                        
-            # Log the final extracted data
-            logger.info(f"Final extracted data: {extracted_data}")
-            return JSONResponse(content=extracted_data)
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON: {e}")
-            logger.error(f"Response content that failed to parse: {response_content}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Failed to parse structured data from response: {str(e)}"}
-            )
-            
-    except Exception as e:
-        logger.exception(f"Error extracting structured data: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Data extraction failed: {str(e)}"}
-        )
-
-def process_chat_response(response_content: str) -> dict:
-    """Process the chat response and extract structured data."""
-    import json
-    import re
-    
-    # Try to find JSON in the response
-    try:
-        # First check if response is wrapped in code blocks
-        code_block_pattern = r'```(?:json)?(.*?)```'
-        match = re.search(code_block_pattern, response_content, re.DOTALL)
-        
-        if match:
-            # Extract JSON from code block
-            json_str = match.group(1).strip()
-            extracted_data = json.loads(json_str)
-        else:
-            # Try to parse the entire response as JSON
-            extracted_data = json.loads(response_content.strip())
-        
-        # Clean up data types
-        if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
-            try:
-                # Handle ranges like "7-10 days"
-                dgerm = str(extracted_data["days_to_germination"])
-                if "-" in dgerm:
-                    dgerm = dgerm.split("-")[0]  # Take minimum value
-                # Remove non-numeric characters
-                dgerm = re.sub(r'[^\d.]', '', dgerm)
-                extracted_data["days_to_germination"] = int(float(dgerm))
-            except (ValueError, TypeError):
-                extracted_data["days_to_germination"] = None
-        
-        if "package_weight" in extracted_data and extracted_data["package_weight"]:
-            try:
-                # Handle string with units like "0.5g"
-                weight_str = str(extracted_data["package_weight"])
-                weight_str = re.sub(r'[^\d.]', '', weight_str)  # Remove non-numeric chars
-                extracted_data["package_weight"] = float(weight_str)
-            except (ValueError, TypeError):
-                extracted_data["package_weight"] = None
-        
-        # Format dates
-        if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
-            # Check if already in YYYY-MM-DD format
-            if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
-                try:
-                    from datetime import datetime
-                    date_str = str(extracted_data["expiration_date"])
-                    # Try common date formats
-                    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y/%m/%d"]:
-                        try:
-                            parsed_date = datetime.strptime(date_str, fmt)
-                            extracted_data["expiration_date"] = parsed_date.strftime("%Y-%m-%d")
-                            break
-                        except ValueError:
-                            continue
-                    else:
-                        extracted_data["expiration_date"] = None
-                except Exception:
-                    extracted_data["expiration_date"] = None
-                    
-        return extracted_data
-        
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse JSON from response: {e}")
-    except Exception as e:
-        raise ValueError(f"Error processing chat response: {e}")
 
 # Garden Supply endpoints
 @app.post("/garden-supplies/", response_model=GardenSupply)
