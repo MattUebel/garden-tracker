@@ -1092,74 +1092,110 @@ async def extract_data_from_ocr_temp(
         # Initialize Mistral client
         client = Mistral(api_key=api_key)
 
-        # Define prompt to extract structured data with few-shot examples
+        # Log the OCR text input
+        logger.info(f"OCR text to process: {ocr_text[:500]}...")
+
+        # Define prompt to extract structured data with few-shot examples and better guidance
         prompt = f"""
-Extract structured information from the following seed packet text.
-The text was obtained from OCR and may have formatting issues or errors.
-Please extract the following fields if they are present in the text:
+You are an expert gardener and seed packet analyst. I need you to extract specific structured information from the OCR text of a seed packet.
+The text was obtained from OCR and may have formatting errors, missing information, or unclear sections.
 
-- name: The name of the plant/seed (e.g., 'Tomato', 'Basil', 'Carrot')
-- variety: The specific variety (e.g., 'Roma', 'Sweet Thai', 'Nantes')
-- description: A brief description of the plant
-- planting_instructions: Instructions on how to plant
-- days_to_germination: The number of days it takes to germinate (just the number)
-- spacing: Recommended spacing between plants
-- sun_exposure: Light requirements (e.g., 'Full Sun', 'Partial Shade')
-- soil_type: Soil preferences
-- watering: Watering requirements
+Extract the following fields to the best of your ability, making reasonable inferences when information is partial:
+
+- name: The primary plant/seed name (e.g., 'Tomato', 'Basil', 'Carrot') - look for the most prominent plant name
+- variety: The specific variety/cultivar (e.g., 'Roma', 'Sweet Thai', 'Nantes') - usually follows the name
+- description: A brief description of the plant - look for text that describes appearance, taste, or growing characteristics
+- planting_instructions: Any text that explains how to plant the seeds
+- days_to_germination: The number of days it takes for the seeds to germinate (just the number, or the minimum if a range)
+- spacing: Recommended spacing between plants (e.g., "12-18 inches")
+- sun_exposure: Light requirements (e.g., 'Full Sun', 'Partial Shade', 'Full to Partial Sun')
+- soil_type: Soil preferences or recommendations
+- watering: Watering requirements or instructions
 - fertilizer: Fertilizer recommendations
-- package_weight: The weight of the seed packet (just the number in grams)
-- expiration_date: Date format YYYY-MM-DD if present
+- package_weight: The weight of the seed packet in grams (just the number)
+- expiration_date: Date format YYYY-MM-DD if present (look for "use by", "plant by", "sell by", or similar phrases)
 
-I need a valid JSON object that I can parse with JSON.parse() or json.loads().
-Do not include Markdown code block formatting in your response, no ```json prefix or ``` suffix.
-Return ONLY a JSON object with these fields. If information for a field is not available, use null.
+Return a valid JSON object that I can parse with JSON.parse() or json.loads().
+Do not include Markdown code block formatting in your response (no ```json prefix or ``` suffix).
+If information for a field is not available, use null.
+
+Common patterns in seed packets:
+- The plant name is usually the largest text and often first
+- Variety often follows the plant name with a different font or size
+- Days to germination often appears as "Days to Germination: X-Y days" or similar
+- Look for phrases like "Plant in full sun" for sun exposure
+- Spacing information often includes units like "inches" or "cm"
+- Weight might appear as "Net Wt: X g" or similar
+- Dates might be formatted in various ways, convert to YYYY-MM-DD
 
 Example 1:
-Input OCR text: "Cherry Tomato. Sweet 100. A productive cherry tomato with sweet fruits. Plant in full sun. Days to germination: 7-10. Spacing: 12-24 inches apart. Water regularly. Plant after danger of frost has passed. Net Wt: 0.3g. Best by: 2024-12-01"
+Input OCR text: "CHERRY TOMATO Sweet 100 F1 Hybrid A productive cherry type tomato that produces bright red cherry sized fruits with a sweet flavor. Plant after all danger of frost. Days to Germination: 7-10 days. Spacing: Plant 12-24 inches apart. Water regularly. Full Sun. Net Wt: 0.3g. Best by: Dec 2024"
 
 Expected Output:
 {{
   "name": "Tomato",
-  "variety": "Sweet 100",
-  "description": "A productive cherry tomato with sweet fruits",
-  "planting_instructions": "Plant after danger of frost has passed",
+  "variety": "Sweet 100 F1 Hybrid",
+  "description": "A productive cherry type tomato that produces bright red cherry sized fruits with a sweet flavor",
+  "planting_instructions": "Plant after all danger of frost",
   "days_to_germination": 7,
   "spacing": "12-24 inches apart",
-  "sun_exposure": "Full sun",
+  "sun_exposure": "Full Sun",
   "soil_type": null,
   "watering": "Water regularly",
   "fertilizer": null,
   "package_weight": 0.3,
-  "expiration_date": "2024-12-01"
+  "expiration_date": "2024-12-15"
 }}
 
 Example 2:
-Input OCR text: "Basil. Planting depth: 1/4 inch. Plant in well-drained soil. Keep soil moist. Germination: 5-10 days. Full sun."
+Input OCR text: "BASIL Sweet Genovese Use in Italian dishes. Plant in well-drained soil. Best in full sun. Keep soil moist. Germination: 5-10 days. Plant 6-12\" apart. Height: 18-24\". Fertilize monthly. Net weight: 0.5g"
 
 Expected Output:
 {{
   "name": "Basil",
-  "variety": null,
-  "description": null,
-  "planting_instructions": "Planting depth: 1/4 inch. Plant in well-drained soil.",
+  "variety": "Sweet Genovese",
+  "description": "Use in Italian dishes",
+  "planting_instructions": "Plant in well-drained soil",
   "days_to_germination": 5,
-  "spacing": null,
+  "spacing": "6-12 inches apart",
   "sun_exposure": "Full sun",
   "soil_type": "Well-drained soil",
   "watering": "Keep soil moist",
-  "fertilizer": null,
-  "package_weight": null,
+  "fertilizer": "Fertilize monthly",
+  "package_weight": 0.5,
   "expiration_date": null
 }}
 
-Now process this OCR text:
+Example 3:
+Input OCR text: "CARROT Nantes Type Bright orange roots with excellent flavor. Sow seeds 1/4 inch deep in rows 12-18 inches apart. Thin seedlings to 2 inches apart. Prefers loose, sandy soil. Keep evenly moist. Germinates in 14-21 days. Full to partial sun. 1g approximately 900 seeds. Packed for 2023. Use by end of 2025."
+
+Expected Output:
+{{
+  "name": "Carrot",
+  "variety": "Nantes Type",
+  "description": "Bright orange roots with excellent flavor",
+  "planting_instructions": "Sow seeds 1/4 inch deep in rows 12-18 inches apart. Thin seedlings to 2 inches apart",
+  "days_to_germination": 14,
+  "spacing": "2 inches apart",
+  "sun_exposure": "Full to partial sun",
+  "soil_type": "Loose, sandy soil",
+  "watering": "Keep evenly moist",
+  "fertilizer": null,
+  "package_weight": 1,
+  "expiration_date": "2025-12-31"
+}}
+
+Now, carefully analyze this OCR text and extract as much information as possible, even if it's only partially available:
 
 {ocr_text}
 """
 
         # Create chat completion request
         messages = [
+            {
+                "role": "system",
+                "content": "You are a garden seed packet information extraction expert. Your task is to extract structured information from OCR text of seed packets, providing the most accurate data possible."
+            },
             {
                 "role": "user",
                 "content": prompt
@@ -1170,7 +1206,8 @@ Now process this OCR text:
         logger.info(f"Sending chat completion request for uploaded seed packet image")
         chat_response = client.chat.complete(
             model=MISTRAL_CHAT_MODEL,
-            messages=messages
+            messages=messages,
+            temperature=0.2  # Lower temperature for more deterministic outputs
         )
 
         # Extract the response content
@@ -1216,16 +1253,28 @@ Now process this OCR text:
             
             if "package_weight" in extracted_data and extracted_data["package_weight"]:
                 try:
-                    extracted_data["package_weight"] = float(extracted_data["package_weight"])
+                    # Handle various forms of weight representation
+                    weight_str = str(extracted_data["package_weight"]).lower()
+                    if "g" in weight_str:
+                        weight_str = weight_str.replace("g", "").strip()
+                    extracted_data["package_weight"] = float(weight_str)
                 except (ValueError, TypeError):
                     extracted_data["package_weight"] = None
             
             # Format dates properly
             if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
+                # Handle various date formats and convert to YYYY-MM-DD
+                date_str = str(extracted_data["expiration_date"])
                 # Simple validation to check if it matches YYYY-MM-DD format
                 import re
-                if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
-                    extracted_data["expiration_date"] = None
+                if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str):
+                    try:
+                        from dateutil import parser
+                        # Try to parse the date string
+                        parsed_date = parser.parse(date_str)
+                        extracted_data["expiration_date"] = parsed_date.strftime("%Y-%m-%d")
+                    except:
+                        extracted_data["expiration_date"] = None
             
             logger.info(f"Final extracted data: {extracted_data}")
             return JSONResponse(content=extracted_data)
@@ -1243,7 +1292,6 @@ Now process this OCR text:
             status_code=500,
             content={"error": f"Data extraction failed: {str(e)}"}
         )
-
 # Garden Supply endpoints
 @app.post("/garden-supplies/", response_model=GardenSupply)
 async def create_garden_supply(
