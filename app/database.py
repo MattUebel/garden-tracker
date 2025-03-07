@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError
 import logging
@@ -30,8 +30,8 @@ def get_db():
     """Database session dependency with improved error handling"""
     db = SessionLocal()
     try:
-        # Test the connection
-        db.execute("SELECT 1")
+        # Test the connection - using text() to properly handle the SQL statement
+        db.execute(text("SELECT 1"))
         yield db
     except OperationalError as e:
         logger.error(f"Database connection error: {str(e)}")

@@ -79,7 +79,7 @@
                     </td>
                     <td>
                         <div class="btn-group">
-                            <button class="btn btn-sm btn-outline-primary" onclick='showEditModal({{ packet|tojson|safe }})'>
+                            <button class="btn btn-sm btn-outline-primary" onclick='showEditModal({{ packet.model_dump_json()|safe }})'>
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <button class="btn btn-sm btn-outline-success" onclick="duplicateSeedPacket({{ packet.id }})">
