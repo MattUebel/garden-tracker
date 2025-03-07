@@ -1103,7 +1103,7 @@ The text was obtained from OCR and may have formatting errors, missing informati
 Extract the following fields to the best of your ability, making reasonable inferences when information is partial:
 
 - name: The primary plant/seed name (e.g., 'Tomato', 'Basil', 'Carrot') - look for the most prominent plant name
-- variety: The specific variety/cultivar (e.g., 'Roma', 'Sweet Thai', 'Nantes') - usually follows the name
+- variety: The specific variety/cultivar (e.g., 'Roma', 'Brandywine', 'Sweet Thai', 'Nantes') - usually follows the name
 - description: A brief description of the plant - look for text that describes appearance, taste, or growing characteristics
 - planting_instructions: Any text that explains how to plant the seeds
 - days_to_germination: The number of days it takes for the seeds to germinate (just the number, or the minimum if a range)
@@ -1238,7 +1238,7 @@ Now, carefully analyze this OCR text and extract as much information as possible
                     extracted_data = json.loads(response_content)
             else:
                 # If no code blocks, try parsing the whole response directly
-                extracted_data = json.loads(response_content)
+                extracted_data = json.loads(response_content.strip())
             
             # Clean up and validate the data
             if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
@@ -1275,7 +1275,7 @@ Now, carefully analyze this OCR text and extract as much information as possible
                         extracted_data["expiration_date"] = parsed_date.strftime("%Y-%m-%d")
                     except:
                         extracted_data["expiration_date"] = None
-            
+                    
             logger.info(f"Final extracted data: {extracted_data}")
             return JSONResponse(content=extracted_data)
         except json.JSONDecodeError as e:
@@ -1288,6 +1288,280 @@ Now, carefully analyze this OCR text and extract as much information as possible
             
     except Exception as e:
         logger.exception(f"Error extracting structured data from OCR text")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Data extraction failed: {str(e)}"}
+        )
+
+# OCR endpoint for temporary image upload (not attached to an existing seed packet)
+@app.post("/seed-packets/ocr-temp")
+async def process_ocr_temp(
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """Process OCR on an uploaded image without saving it to a specific seed packet"""
+    try:
+        # Check if Mistral API key is available
+        api_key = get_mistral_api_key()
+        if not api_key:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "MISTRAL_API_KEY not set in environment"}
+            )
+        
+        # Save the uploaded image temporarily
+        image_path = save_upload_file(image)
+        if not image_path:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Failed to save uploaded image"}
+            )
+
+        # Initialize Mistral client
+        client = Mistral(api_key=api_key)
+
+        # Prepare the image path for processing
+        processed_image_path = f"app/static/{image_path}" if not image_path.startswith('app/') else image_path
+        logger.info(f"Processing OCR for uploaded image: {processed_image_path}")
+
+        # Base64 encode the image
+        import base64
+        with open(processed_image_path, "rb") as image_file:
+            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            
+        # Determine image format from the file extension
+        image_format = "jpeg"  # Default format
+        if processed_image_path.lower().endswith(".png"):
+            image_format = "png"
+        elif processed_image_path.lower().endswith(".gif"):
+            image_format = "gif"
+        elif processed_image_path.lower().endswith((".jpg", ".jpeg")):
+            image_format = "jpeg"
+
+        # Call the OCR API
+        logger.info("Calling Mistral OCR API")
+        ocr_response = client.ocr.process(
+            model=MISTRAL_OCR_MODEL,
+            document={
+                "type": "image_url",
+                "image_url": f"data:image/{image_format};base64,{base64_image}"
+            }
+        )
+        logger.info("Received response from Mistral OCR API")
+        
+        # Extract OCR text from the response
+        ocr_text = ""
+        response_dict = None
+        if hasattr(ocr_response, 'model_dump'):
+            response_dict = ocr_response.model_dump()
+        elif hasattr(ocr_response, '__dict__'):
+            response_dict = ocr_response.__dict__
+        else:
+            import json
+            try:
+                response_dict = json.loads(str(ocr_response))
+            except:
+                response_dict = {"error": "Could not parse response"}
+        
+        # Log the full OCR response for debugging
+        logger.info(f"OCR Response dictionary structure: {list(response_dict.keys()) if isinstance(response_dict, dict) else 'Not a dictionary'}")
+        
+        # Extract the markdown text from the pages
+        if isinstance(response_dict, dict) and "pages" in response_dict:
+            for page in response_dict["pages"]:
+                if "markdown" in page:
+                    if ocr_text:
+                        ocr_text += "\n\n"
+                    ocr_text += page["markdown"]
+        else:
+            # Fallback to string representation if we can't extract text
+            ocr_text = str(ocr_response)
+        
+        # Log the extracted OCR text
+        logger.info(f"Extracted OCR text (first 300 chars): {ocr_text[:300]}...")
+        logger.info(f"OCR text length: {len(ocr_text)} characters")
+        
+        # Return OCR text and image path
+        return JSONResponse(
+            content={
+                "status": "success",
+                "image_path": image_path,
+                "ocr_text": ocr_text
+            }
+        )
+            
+    except Exception as e:
+        logger.exception(f"Error processing OCR for uploaded image")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"OCR processing failed: {str(e)}"}
+        )
+
+# Structured data extraction from OCR text
+@app.post("/seed-packets/extract-info")
+async def extract_info_from_ocr(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """Extract structured data from OCR text using Mistral AI"""
+    try:
+        # Parse JSON body
+        body = await request.json()
+        ocr_text = body.get("ocr_text", "")
+        
+        if not ocr_text:
+            logger.error("No OCR text provided in request body")
+            return JSONResponse(
+                status_code=400,
+                content={"error": "No OCR text provided"}
+            )
+
+        # Get the API key from configuration
+        api_key = get_mistral_api_key()
+        if not api_key:
+            logger.error("MISTRAL_API_KEY not set in environment variables")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "MISTRAL_API_KEY not set in environment"}
+            )
+
+        # Initialize Mistral client
+        client = Mistral(api_key=api_key)
+        
+        # Log the OCR text we're processing
+        logger.info(f"OCR text to process for extraction (length: {len(ocr_text)})")
+        logger.info(f"First 300 chars of OCR text: {ocr_text[:300]}...")
+
+        # Create a simple, clear prompt
+        prompt = f"""You are a seed packet analyzer. I have an image of a seed packet and I've run OCR on it.
+Please extract the following information from the OCR text and format it as a simple JSON object.
+
+For each field, extract ONLY if present in the text. Otherwise, use null:
+
+1. name: The name of the plant (example: "Tomato", "Basil", "Carrot")
+2. variety: The specific variety name (example: "Roma", "Brandywine", "Sweet Thai", "Nantes")
+3. description: A brief description of the plant or product
+4. planting_instructions: Step-by-step planting guidance
+5. days_to_germination: Number of days to germination (just the number)
+6. spacing: Recommended spacing between plants
+7. sun_exposure: Light requirements (Full Sun, Partial Shade, etc.)
+8. soil_type: Soil recommendations
+9. watering: Watering instructions
+10. fertilizer: Fertilizer recommendations
+11. package_weight: Weight in grams (just the number)
+12. expiration_date: Date in YYYY-MM-DD format
+
+Only return a valid JSON object containing these 12 fields and null values for missing information.
+Do NOT include code block formatting, explanations, or any text outside the JSON object.
+
+Here's the OCR text from the seed packet:
+
+{ocr_text}
+"""
+
+        # Create chat completion request with system and user messages
+        messages = [
+            {
+                "role": "system",
+                "content": "You are an expert seed packet information extractor. Return ONLY a valid JSON object with no text outside the JSON."
+            },
+            {
+                "role": "user", 
+                "content": prompt
+            }
+        ]
+
+        # Log that we're sending the request
+        logger.info(f"Sending chat completion request to Mistral API for data extraction")
+        
+        # Get the chat response with low temperature for more deterministic results
+        chat_response = client.chat.complete(
+            model=MISTRAL_CHAT_MODEL,
+            messages=messages,
+            temperature=0.1
+        )
+
+        # Extract the response content
+        response_content = chat_response.choices[0].message.content
+        
+        # Log the response for debugging
+        logger.info(f"Raw chat completion response from Mistral API (first 500 chars): {response_content[:500]}...")
+        logger.info(f"Response length: {len(response_content)}")
+
+        # Parse JSON from the response, handling any code blocks
+        import json
+        import re
+
+        # Try to find JSON in the response
+        try:
+            # First check if response is wrapped in code blocks
+            code_block_pattern = r'```(?:json)?(.*?)```'
+            match = re.search(code_block_pattern, response_content, re.DOTALL)
+            
+            if match:
+                # Extract JSON from code block
+                json_str = match.group(1).strip()
+                logger.info(f"Found JSON in code block (first 100 chars): {json_str[:100]}...")
+                extracted_data = json.loads(json_str)
+            else:
+                # Try to parse the entire response as JSON
+                logger.info("No code block found, trying to parse entire response as JSON")
+                extracted_data = json.loads(response_content.strip())
+            
+            # Clean up data types
+            if "days_to_germination" in extracted_data and extracted_data["days_to_germination"]:
+                try:
+                    # Handle ranges like "7-10 days"
+                    dgerm = str(extracted_data["days_to_germination"])
+                    if "-" in dgerm:
+                        dgerm = dgerm.split("-")[0]  # Take minimum value
+                    # Remove non-numeric characters
+                    dgerm = re.sub(r'[^\d.]', '', dgerm)
+                    extracted_data["days_to_germination"] = int(float(dgerm))
+                    logger.info(f"Cleaned days_to_germination: {extracted_data['days_to_germination']}")
+                except Exception as e:
+                    logger.warning(f"Could not parse days_to_germination: {e}")
+                    extracted_data["days_to_germination"] = None
+            
+            if "package_weight" in extracted_data and extracted_data["package_weight"]:
+                try:
+                    # Handle string with units like "0.5g"
+                    weight_str = str(extracted_data["package_weight"])
+                    weight_str = re.sub(r'[^\d.]', '', weight_str)  # Remove non-numeric chars
+                    extracted_data["package_weight"] = float(weight_str)
+                    logger.info(f"Cleaned package_weight: {extracted_data['package_weight']}")
+                except Exception as e:
+                    logger.warning(f"Could not parse package_weight: {e}")
+                    extracted_data["package_weight"] = None
+            
+            # Format dates
+            if "expiration_date" in extracted_data and extracted_data["expiration_date"]:
+                # Check if already in YYYY-MM-DD format
+                if not re.match(r'^\d{4}-\d{2}-\d{2}$', str(extracted_data["expiration_date"])):
+                    try:
+                        from dateutil import parser
+                        date_str = str(extracted_data["expiration_date"])
+                        parsed_date = parser.parse(date_str)
+                        extracted_data["expiration_date"] = parsed_date.strftime("%Y-%m-%d")
+                        logger.info(f"Parsed expiration_date: {extracted_data['expiration_date']}")
+                    except Exception as e:
+                        logger.warning(f"Could not parse expiration_date: {e}")
+                        extracted_data["expiration_date"] = None
+                        
+            # Log the final extracted data
+            logger.info(f"Final extracted data: {extracted_data}")
+            return JSONResponse(content=extracted_data)
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON: {e}")
+            logger.error(f"Response content that failed to parse: {response_content}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Failed to parse structured data from response: {str(e)}"}
+            )
+            
+    except Exception as e:
+        logger.exception(f"Error extracting structured data: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"error": f"Data extraction failed: {str(e)}"}
