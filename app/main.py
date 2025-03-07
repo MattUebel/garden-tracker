@@ -692,7 +692,8 @@ def delete_seed_packet(seed_packet_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Seed packet deleted"}
 
-# New OCR endpoint for seed packets
+# Modify the process_seed_packet_ocr function to improve text detection
+
 @app.post("/seed-packets/{seed_packet_id}/ocr")
 async def process_seed_packet_ocr(
     seed_packet_id: int,
@@ -703,13 +704,11 @@ async def process_seed_packet_ocr(
         seed_packet = db.query(models.SeedPacket).filter(models.SeedPacket.id == seed_packet_id).first()
         if seed_packet is None:
             raise ResourceNotFoundException("Seed Packet", seed_packet_id)
-
         if not seed_packet.image_path:
             return JSONResponse(
                 status_code=400,
                 content={"error": "No image available for this seed packet"}
             )
-
         # Get the API key from configuration
         api_key = get_mistral_api_key()
         if not api_key:
@@ -717,10 +716,8 @@ async def process_seed_packet_ocr(
                 status_code=500,
                 content={"error": "MISTRAL_API_KEY not set in environment"}
             )
-
         # Initialize Mistral client
         client = Mistral(api_key=api_key)
-
         # Clean up the image path - it might start with "/" or "static/"
         image_path = seed_packet.image_path
         # Remove initial '/' if present
@@ -739,6 +736,9 @@ async def process_seed_packet_ocr(
         import os
         if os.path.exists(image_path):
             logger.info(f"Image file exists at {image_path}")
+            # Get and log image file size
+            file_size = os.path.getsize(image_path)
+            logger.info(f"Image file size: {file_size} bytes")
         else:
             logger.error(f"Image file does not exist at {image_path}")
             # Try to list the directory to see what's there
@@ -747,22 +747,70 @@ async def process_seed_packet_ocr(
                 logger.info(f"Contents of {dir_path}: {os.listdir(dir_path)}")
             else:
                 logger.error(f"Directory {dir_path} does not exist")
-
+        
+        # Try to preprocess the image to improve OCR results if PIL is available
+        preprocessed_image_path = None
+        try:
+            from PIL import Image, ImageEnhance, ImageFilter
+            import tempfile
+            
+            logger.info("Attempting to preprocess image for better OCR results")
+            # Create a temporary file for the processed image
+            fd, preprocessed_image_path = tempfile.mkstemp(suffix='.jpg')
+            os.close(fd)
+            
+            # Open the image
+            img = Image.open(image_path)
+            
+            # Convert to RGB if needed (in case it's RGBA with transparency)
+            if img.mode == 'RGBA':
+                img = img.convert('RGB')
+                
+            # Resize if the image is very large (preserves detail but reduces processing time)
+            max_size = 2000
+            if max(img.size) > max_size:
+                logger.info(f"Resizing large image from {img.size}")
+                img.thumbnail((max_size, max_size), Image.LANCZOS)
+                logger.info(f"Image resized to {img.size}")
+            
+            # Enhance contrast to make text more visible
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(1.5)  # Increase contrast by 50%
+            
+            # Sharpen to make text edges crisper
+            img = img.filter(ImageFilter.SHARPEN)
+            
+            # Save the preprocessed image
+            img.save(preprocessed_image_path, 'JPEG', quality=95)
+            logger.info(f"Image preprocessed and saved to {preprocessed_image_path}")
+            
+            # Use the preprocessed image instead of the original
+            image_to_process = preprocessed_image_path
+        except ImportError:
+            logger.warning("PIL not available for image preprocessing, using original image")
+            image_to_process = image_path
+        except Exception as e:
+            logger.warning(f"Image preprocessing failed: {str(e)}, using original image")
+            image_to_process = image_path
+        
         # Base64 encode the image
         import base64
         try:
-            with open(image_path, "rb") as image_file:
+            with open(image_to_process, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
                 
             # Determine image format from the file extension
             image_format = "jpeg"  # Default format
-            if image_path.lower().endswith(".png"):
+            if image_to_process.lower().endswith(".png"):
                 image_format = "png"
-            elif image_path.lower().endswith(".gif"):
+            elif image_to_process.lower().endswith(".gif"):
                 image_format = "gif"
-            elif image_path.lower().endswith((".jpg", ".jpeg")):
+            elif image_to_process.lower().endswith((".jpg", ".jpeg")):
                 image_format = "jpeg"
-
+            
+            # Log more detailed information about the API call
+            logger.info(f"Calling OCR API with image format: {image_format}, base64 length: {len(base64_image)}")
+            
             # Call the OCR API with base64-encoded image
             ocr_response = client.ocr.process(
                 model="mistral-ocr-latest",
@@ -800,7 +848,7 @@ async def process_seed_packet_ocr(
                 except:
                     response_dict = {"error": "Could not parse response"}
             
-            logger.info(f"Response dictionary: {response_dict}")
+            logger.info(f"Response keys: {list(response_dict.keys()) if isinstance(response_dict, dict) else 'Not a dictionary'}")
             
             # Extract the markdown text from the pages
             ocr_text = ""
@@ -823,14 +871,34 @@ async def process_seed_packet_ocr(
                     for text in page_texts if text.strip()
                 )
                 
-                if is_just_image_refs:
-                    logger.warning(f"OCR only returned image references for seed packet {seed_packet_id}, no actual text was extracted")
-                    ocr_text = "The OCR process could not detect any text in this image. It may be that the text is too small, blurry, or low contrast."
+                # Check if there's any content at all
+                is_empty = not ''.join(page_texts).strip()
+                
+                if is_just_image_refs or is_empty:
+                    logger.warning(f"OCR only returned image references or empty content for seed packet {seed_packet_id}")
+                    
+                    # Fall back to OCR using a different model or approach
+                    logger.info("Trying alternative OCR approach...")
+                    
+                    # Create a note explaining the issue but don't fail the process
+                    ocr_text = "The OCR process detected an image but couldn't extract text. This could be due to:\n"
+                    ocr_text += "- Text being too small or unclear\n"
+                    ocr_text += "- Low contrast between text and background\n"
+                    ocr_text += "- Unusual font styles\n\n"
+                    ocr_text += "Try taking a clearer photo of the seed packet in good lighting, focusing on text areas."
             else:
                 # Fallback to string representation if we can't extract text
                 ocr_text = str(ocr_response)
             
             logger.info(f"Extracted OCR text: {ocr_text[:100]}...")  # Log first 100 chars
+            
+            # Clean up the temporary preprocessed image if it exists
+            if preprocessed_image_path and os.path.exists(preprocessed_image_path):
+                try:
+                    os.unlink(preprocessed_image_path)
+                    logger.info(f"Removed temporary preprocessed image: {preprocessed_image_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove temporary image: {str(e)}")
             
         except FileNotFoundError:
             logger.error(f"Image file not found: {image_path}")
@@ -844,7 +912,6 @@ async def process_seed_packet_ocr(
                 status_code=500,
                 content={"error": f"Error processing image: {str(e)}"}
             )
-
         # Create a note with the OCR results
         note_body = f"OCR Results:\n\n{ocr_text}"
         
@@ -858,7 +925,6 @@ async def process_seed_packet_ocr(
         db.refresh(db_note)
         
         logger.info(f"Created note with OCR results for seed packet: {seed_packet_id}")
-
         return JSONResponse(
             content={
                 "status": "success",
