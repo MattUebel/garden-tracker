@@ -382,9 +382,26 @@
             }
 
             const ocrData = await ocrResponse.json();
-            const ocrText = ocrData.ocr_text;
+            console.log('OCR Response:', ocrData);
             
-            // Show results
+            // Check if OCR was successful but didn't find any text
+            if (ocrData.status === 'warning') {
+                console.warn(ocrData.warning);
+                alert('Warning: ' + (ocrData.warning || 'No text was detected in the image. Please try a clearer image or enter information manually.'));
+                
+                // Still set the image in the form since that worked
+                const mainImageInput = document.getElementById('image');
+                if (!mainImageInput.files || mainImageInput.files.length === 0) {
+                    // Create a new DataTransfer object and add the file
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(fileInput.files[0]);
+                    mainImageInput.files = dataTransfer.files;
+                }
+                return;
+            }
+            
+            // Get the OCR text
+            const ocrText = ocrData.ocr_text;
             console.log('OCR Text:', ocrText);
             
             // Step 2: Extract structured data from the OCR text
@@ -403,6 +420,22 @@
 
             const extractedData = await response.json();
             console.log('Extracted Data:', extractedData);
+
+            // Check if we got meaningful data or just nulls
+            const hasData = Object.values(extractedData).some(value => value !== null);
+            if (!hasData) {
+                console.warn("Extraction returned only null values");
+                alert("The system couldn't extract specific information from this image. The image has been uploaded, but please enter the details manually.");
+                
+                // Still set the image in the form since that worked
+                const mainImageInput = document.getElementById('image');
+                if (!mainImageInput.files || mainImageInput.files.length === 0) {
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(fileInput.files[0]);
+                    mainImageInput.files = dataTransfer.files;
+                }
+                return;
+            }
 
             // Fill in the form fields with the extracted data
             document.getElementById('name').value = extractedData.name || '';

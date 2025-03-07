@@ -1276,7 +1276,6 @@ Now, carefully analyze this OCR text and extract as much information as possible
                     except:
                         extracted_data["expiration_date"] = None
                     
-            logger.info(f"Final extracted data: {extracted_data}")
             return JSONResponse(content=extracted_data)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON from chat completion response: {e}")
@@ -1323,11 +1322,24 @@ async def process_ocr_temp(
         # Prepare the image path for processing
         processed_image_path = f"app/static/{image_path}" if not image_path.startswith('app/') else image_path
         logger.info(f"Processing OCR for uploaded image: {processed_image_path}")
+        
+        # Log image properties
+        import os
+        if os.path.exists(processed_image_path):
+            file_size = os.path.getsize(processed_image_path)
+            logger.info(f"Image file exists, size: {file_size} bytes")
+        else:
+            logger.error(f"Image file does not exist: {processed_image_path}")
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Image file not found"}
+            )
 
         # Base64 encode the image
         import base64
         with open(processed_image_path, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            logger.info(f"Base64 encoded image length: {len(base64_image)} characters")
             
         # Determine image format from the file extension
         image_format = "jpeg"  # Default format
@@ -1337,17 +1349,30 @@ async def process_ocr_temp(
             image_format = "gif"
         elif processed_image_path.lower().endswith((".jpg", ".jpeg")):
             image_format = "jpeg"
+        
+        logger.info(f"Using image format: {image_format}")
 
-        # Call the OCR API
-        logger.info("Calling Mistral OCR API")
-        ocr_response = client.ocr.process(
-            model=MISTRAL_OCR_MODEL,
-            document={
-                "type": "image_url",
-                "image_url": f"data:image/{image_format};base64,{base64_image}"
-            }
-        )
-        logger.info("Received response from Mistral OCR API")
+        # Call the OCR API with more detailed logging
+        logger.info(f"Calling Mistral OCR API with model: {MISTRAL_OCR_MODEL}")
+        try:
+            # Get original filename for better traceability in the API
+            original_filename = image.filename if hasattr(image, 'filename') and image.filename else "uploaded_image"
+            
+            ocr_response = client.ocr.process(
+                model=MISTRAL_OCR_MODEL,
+                document={
+                    "type": "image_url",
+                    "image_url": f"data:image/{image_format};base64,{base64_image}",
+                    "document_name": original_filename  # Added document_name for better traceability
+                }
+            )
+            logger.info("Received response from Mistral OCR API")
+        except Exception as e:
+            logger.exception(f"Error calling OCR API: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"OCR API call failed: {str(e)}"}
+            )
         
         # Extract OCR text from the response
         ocr_text = ""
@@ -1364,18 +1389,56 @@ async def process_ocr_temp(
                 response_dict = {"error": "Could not parse response"}
         
         # Log the full OCR response for debugging
-        logger.info(f"OCR Response dictionary structure: {list(response_dict.keys()) if isinstance(response_dict, dict) else 'Not a dictionary'}")
+        logger.info(f"OCR Response structure: {list(response_dict.keys()) if isinstance(response_dict, dict) else 'Not a dictionary'}")
+        logger.info(f"Response dictionary: {response_dict}")
         
-        # Extract the markdown text from the pages
+        # Extract the markdown text from the pages and check if it's just image references
         if isinstance(response_dict, dict) and "pages" in response_dict:
+            page_texts = []
+            
             for page in response_dict["pages"]:
                 if "markdown" in page:
+                    page_text = page["markdown"]
+                    page_texts.append(page_text)
+                    
+                    # If we have OCR text, append it
                     if ocr_text:
                         ocr_text += "\n\n"
-                    ocr_text += page["markdown"]
+                    ocr_text += page_text
+                    
+            # Check if OCR text is just image references (no actual text)
+            is_just_image_refs = all(
+                text.strip().startswith('![') and text.strip().endswith(')')
+                for text in page_texts if text.strip()
+            )
+            
+            if is_just_image_refs:
+                logger.warning("OCR only returned image references, no actual text was extracted")
+                
+                # Return the error with the image path so the frontend can still show the image
+                return JSONResponse(
+                    content={
+                        "status": "warning",
+                        "image_path": image_path,
+                        "ocr_text": "No text could be extracted from this image. The OCR process detected only image content.",
+                        "warning": "OCR process didn't find text in the image"
+                    }
+                )
         else:
             # Fallback to string representation if we can't extract text
             ocr_text = str(ocr_response)
+        
+        # Check if OCR extracted any meaningful text
+        if not ocr_text or ocr_text.isspace():
+            logger.warning("OCR returned empty or whitespace-only text")
+            return JSONResponse(
+                content={
+                    "status": "warning",
+                    "image_path": image_path,
+                    "ocr_text": "No text could be extracted from this image.",
+                    "warning": "OCR process didn't find text in the image"
+                }
+            )
         
         # Log the extracted OCR text
         logger.info(f"Extracted OCR text (first 300 chars): {ocr_text[:300]}...")
@@ -1391,7 +1454,7 @@ async def process_ocr_temp(
         )
             
     except Exception as e:
-        logger.exception(f"Error processing OCR for uploaded image")
+        logger.exception(f"Error processing OCR for uploaded image: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"error": f"OCR processing failed: {str(e)}"}
