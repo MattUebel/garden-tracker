@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}{{ supply.name }}{% endblock %}
+{% block title %}{{ garden_supply.name }}{% endblock %}
 
 {% block breadcrumb %}
 <li class="breadcrumb-item"><a href="/">Home</a></li>
 <li class="breadcrumb-item"><a href="/garden-supplies">Garden Supplies</a></li>
-<li class="breadcrumb-item active">{{ supply.name }}</li>
+<li class="breadcrumb-item active">{{ garden_supply.name }}</li>
 {% endblock %}
 
 {% block content %}
 <div class="detail-card">
     <div class="d-flex justify-content-between align-items-start">
         <div>
-            <h2>{{ supply.name }}</h2>
-            <p class="text-muted">Created: {{ supply.created_at.strftime('%Y-%m-%d') }}</p>
+            <h2>{{ garden_supply.name }}</h2>
+            <p class="text-muted">Created: {{ garden_supply.created_at.strftime('%Y-%m-%d') }}</p>
         </div>
         <div>
             <button class="btn btn-primary btn-sm me-2" onclick="showEditModal()">Edit</button>
-            <button class="btn btn-danger btn-sm" onclick="deleteSupply({{ supply.id }})">Delete</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteSupply({{ garden_supply.id }})">Delete</button>
         </div>
     </div>
 
@@ -28,8 +28,8 @@
                 <tr>
                     <th>Image:</th>
                     <td>
-                        {% if supply.image_path %}
-                        <img src="{{ supply.image_path }}" alt="{{ supply.name }}" class="img-thumbnail" style="max-width: 200px">
+                        {% if garden_supply.image_path %}
+                        <img src="{{ garden_supply.image_path }}" alt="{{ garden_supply.name }}" class="img-thumbnail" style="max-width: 200px">
                         {% else %}
                         <div class="no-image-placeholder">
                             <i class="bi bi-image text-muted"></i>
@@ -40,7 +40,7 @@
                 </tr>
                 <tr>
                     <th>Description:</th>
-                    <td>{{ supply.description or 'No description' }}</td>
+                    <td>{{ garden_supply.description or 'No description' }}</td>
                 </tr>
             </table>
         </div>
@@ -54,11 +54,11 @@
         <div class="related-items">
             <div class="d-flex justify-content-between align-items-center">
                 <h3>Plants</h3>
-                <a href="/plants?supply_id={{ supply.id }}" class="btn btn-primary btn-sm">View All</a>
+                <a href="/plants?supply_id={{ garden_supply.id }}" class="btn btn-primary btn-sm">View All</a>
             </div>
-            {% if supply.plants %}
+            {% if garden_supply.plants %}
             <div class="list-group mt-3">
-                {% for plant in supply.plants %}
+                {% for plant in garden_supply.plants %}
                 <a href="/plants/{{ plant.id }}" class="list-group-item list-group-item-action">
                     {{ plant.name }}
                     <small class="text-muted d-block">{{ plant.planting_method }}</small>
@@ -109,7 +109,7 @@
             </div>
             <div class="modal-body">
                 <form id="addNoteForm" enctype="multipart/form-data">
-                    <input type="hidden" name="garden_supply_id" value="{{ supply.id }}">
+                    <input type="hidden" name="garden_supply_id" value="{{ garden_supply.id }}">
                     <div class="mb-3">
                         <label for="body" class="form-label">Note</label>
                         <textarea class="form-control" id="body" name="body" required></textarea>
@@ -203,7 +203,7 @@
     // Show edit modal
     async function showEditModal() {
         try {
-            const response = await fetch(`/garden-supplies/{{ supply.id }}`);
+            const response = await fetch(`/garden-supplies/{{ garden_supply.id }}`);
             if (response.ok) {
                 const supply = await response.json();
                 document.getElementById('edit_name').value = supply.name;
@@ -226,7 +226,7 @@
         const formData = new FormData(this);
         
         try {
-            const response = await fetch(`/garden-supplies/{{ supply.id }}`, {
+            const response = await fetch(`/garden-supplies/{{ garden_supply.id }}`, {
                 method: 'PUT',
                 body: formData
             });

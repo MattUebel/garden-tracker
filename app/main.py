@@ -70,6 +70,7 @@ app = FastAPI(title="Garden Tracker API", debug=DEBUG)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
 # Set up templates with custom JSON encoder
 templates = Jinja2Templates(directory="app/templates")

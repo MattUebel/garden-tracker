@@ -134,3 +134,46 @@ async def garden_supplies_page(
             "filters": filters
         }
     )
+
+@router.post("/garden-supplies/{garden_supply_id}/duplicate", response_model=GardenSupply)
+async def duplicate_garden_supply(garden_supply_id: int, db: Session = Depends(get_db)):
+    """Duplicate a garden supply with all its properties except unique identifiers"""
+    try:
+        # Get the original garden supply
+        original = db.query(GardenSupplyModel).filter(GardenSupplyModel.id == garden_supply_id).first()
+        if original is None:
+            raise HTTPException(status_code=404, detail="Garden supply not found")
+
+        # Create new garden supply with same properties
+        db_garden_supply = GardenSupplyModel(
+            name=f"{original.name} (Copy)",
+            description=original.description
+        )
+        
+        # If original has an image, copy it
+        if original.image_path:
+            try:
+                from shutil import copyfile
+                import os
+                from uuid import uuid4
+                
+                # Generate new unique filename
+                ext = os.path.splitext(original.image_path)[1]
+                new_filename = f"{uuid4()}{ext}"
+                new_path = os.path.join("data/uploads", new_filename)
+                
+                # Copy the file
+                copyfile(os.path.join("data/uploads", os.path.basename(original.image_path)), new_path)
+                db_garden_supply.image_path = f"/uploads/{os.path.basename(new_path)}"
+            except Exception as e:
+                logger.warning(f"Failed to copy image for duplicated garden supply: {str(e)}")
+                # Continue without the image if copy fails
+                pass
+
+        db.add(db_garden_supply)
+        db.commit()
+        db.refresh(db_garden_supply)
+        return db_garden_supply
+    except Exception as e:
+        logger.exception(f"Error duplicating garden supply", extra={"garden_supply_id": garden_supply_id})
+        raise DatabaseOperationException("create", str(e))

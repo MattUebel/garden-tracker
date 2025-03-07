@@ -59,6 +59,8 @@ docker-compose.override.yml
 # Uploads and static content
 app/static/uploads/*
 !app/static/uploads/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
 
 # FastAPI
 .pytest_cache/

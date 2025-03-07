@@ -9,7 +9,7 @@ services:
       - "${APP_PORT:-8000}:8000"
     volumes:
       - .:/app
-      - garden_uploads:/app/app/static/uploads
+      - ./data/uploads:/app/app/static/uploads
     environment:
       - POSTGRES_USER=garden_user
       - POSTGRES_PASSWORD=mygarden

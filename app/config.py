@@ -85,7 +85,7 @@ def validate_configuration():
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
 SECRET_KEY = os.getenv('SECRET_KEY', 'default_secret_key_for_development_only')
-UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'app/static/uploads')
+UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'data/uploads')
 
 # Export database URL for use in other modules
 SQLALCHEMY_DATABASE_URL = get_database_url()

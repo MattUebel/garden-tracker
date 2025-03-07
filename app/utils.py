@@ -116,7 +116,7 @@ def save_upload_file(file: UploadFile) -> Optional[str]:
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        relative_path = f"/static/uploads/{filename}"
+        relative_path = f"/uploads/{filename}"
         logger.info("File uploaded successfully", extra={
             "original_filename": file.filename,
             "saved_path": relative_path
@@ -145,7 +145,8 @@ def delete_upload_file(file_path: str) -> bool:
             return True
         
         # Convert URL path to filesystem path
-        abs_path = Path("app") / file_path.lstrip("/")
+        filename = Path(file_path).name
+        abs_path = UPLOAD_DIR / filename
         if abs_path.exists():
             abs_path.unlink()
             logger.info("File deleted successfully", extra={"path": file_path})
