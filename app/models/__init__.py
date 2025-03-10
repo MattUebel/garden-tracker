@@ -5,6 +5,7 @@ from .garden_supply import GardenSupply
 from .year import Year
 from .note import Note
 from .harvest import Harvest
+from .image import Image
 
 __all__ = [
     'Base',
@@ -14,5 +15,6 @@ __all__ = [
     'GardenSupply',
     'Year',
     'Note',
-    'Harvest'
+    'Harvest',
+    'Image'
 ]

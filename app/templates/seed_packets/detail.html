@@ -49,14 +49,6 @@
                             <td>{{ seed_packet.quantity }}</td>
                         </tr>
                         <tr>
-                            <th>Package Weight:</th>
-                            <td>{% if seed_packet.package_weight %}{{ seed_packet.package_weight }}g{% else %}Not specified{% endif %}</td>
-                        </tr>
-                        <tr>
-                            <th>Expiration Date:</th>
-                            <td>{% if seed_packet.expiration_date %}{{ seed_packet.expiration_date.strftime('%Y-%m-%d') }}{% else %}Not specified{% endif %}</td>
-                        </tr>
-                        <tr>
                             <th>Image:</th>
                             <td>
                                 {% if seed_packet.image_path %}
@@ -113,10 +105,6 @@
                         <tr>
                             <th>Watering:</th>
                             <td>{{ seed_packet.watering or 'Not specified' }}</td>
-                        </tr>
-                        <tr>
-                            <th>Fertilizer:</th>
-                            <td>{{ seed_packet.fertilizer or 'Not specified' }}</td>
                         </tr>
                     </table>
                 </div>
@@ -233,14 +221,6 @@
                                 <input type="number" class="form-control" id="edit_quantity" name="quantity" required min="0">
                             </div>
                             <div class="mb-3">
-                                <label for="edit_package_weight" class="form-label">Package Weight (g)</label>
-                                <input type="number" class="form-control" id="edit_package_weight" name="package_weight" step="0.1">
-                            </div>
-                            <div class="mb-3">
-                                <label for="edit_expiration_date" class="form-label">Expiration Date</label>
-                                <input type="date" class="form-control" id="edit_expiration_date" name="expiration_date">
-                            </div>
-                            <div class="mb-3">
                                 <label for="edit_image" class="form-label">Image</label>
                                 <input type="file" class="form-control" id="edit_image" name="image" accept="image/*">
                             </div>
@@ -270,10 +250,6 @@
                             <div class="mb-3">
                                 <label for="edit_watering" class="form-label">Watering</label>
                                 <input type="text" class="form-control" id="edit_watering" name="watering">
-                            </div>
-                            <div class="mb-3">
-                                <label for="edit_fertilizer" class="form-label">Fertilizer</label>
-                                <input type="text" class="form-control" id="edit_fertilizer" name="fertilizer">
                             </div>
                         </div>
                     </div>
@@ -345,14 +321,6 @@
                                 <label for="extracted_description" class="form-label">Description</label>
                                 <textarea class="form-control" id="extracted_description" rows="3"></textarea>
                             </div>
-                            <div class="mb-3">
-                                <label for="extracted_package_weight" class="form-label">Package Weight (g)</label>
-                                <input type="number" class="form-control" id="extracted_package_weight" step="0.1">
-                            </div>
-                            <div class="mb-3">
-                                <label for="extracted_expiration_date" class="form-label">Expiration Date</label>
-                                <input type="date" class="form-control" id="extracted_expiration_date">
-                            </div>
                         </div>
                         <div class="col-md-6">
                             <h6 class="mb-3">Growing Information</h6>
@@ -379,10 +347,6 @@
                             <div class="mb-3">
                                 <label for="extracted_watering" class="form-label">Watering</label>
                                 <input type="text" class="form-control" id="extracted_watering">
-                            </div>
-                            <div class="mb-3">
-                                <label for="extracted_fertilizer" class="form-label">Fertilizer</label>
-                                <input type="text" class="form-control" id="extracted_fertilizer">
                             </div>
                         </div>
                     </div>
@@ -452,15 +416,12 @@
                 document.getElementById('edit_variety').value = packet.variety || '';
                 document.getElementById('edit_description').value = packet.description || '';
                 document.getElementById('edit_quantity').value = packet.quantity;
-                document.getElementById('edit_package_weight').value = packet.package_weight || '';
-                document.getElementById('edit_expiration_date').value = packet.expiration_date ? packet.expiration_date.split('T')[0] : '';
                 document.getElementById('edit_planting_instructions').value = packet.planting_instructions || '';
                 document.getElementById('edit_days_to_germination').value = packet.days_to_germination || '';
                 document.getElementById('edit_spacing').value = packet.spacing || '';
                 document.getElementById('edit_sun_exposure').value = packet.sun_exposure || '';
                 document.getElementById('edit_soil_type').value = packet.soil_type || '';
                 document.getElementById('edit_watering').value = packet.watering || '';
-                document.getElementById('edit_fertilizer').value = packet.fertilizer || '';
                 
                 const editModal = new bootstrap.Modal(document.getElementById('editSeedPacketModal'));
                 editModal.show();
@@ -627,27 +588,6 @@
         document.getElementById('extracted_variety').value = extractedData.variety || '';
         document.getElementById('extracted_description').value = extractedData.description || '';
         
-        // Handle weight - parse and convert to numeric value if needed
-        let weightValue = '';
-        if (extractedData.package_weight) {
-            weightValue = extractedData.package_weight;
-        } else if (extractedData.net_weight) {
-            // Try to extract numeric value from formats like "100 mg"
-            const match = String(extractedData.net_weight).match(/(\d+(?:\.\d+)?)/);
-            if (match) {
-                const value = parseFloat(match[1]);
-                // Convert to grams if in mg
-                if (String(extractedData.net_weight).toLowerCase().includes('mg')) {
-                    weightValue = value / 1000;
-                } else {
-                    weightValue = value;
-                }
-            }
-        }
-        document.getElementById('extracted_package_weight').value = weightValue;
-        
-        document.getElementById('extracted_expiration_date').value = extractedData.expiration_date || '';
-        
         // Growing information fields
         let plantingInstructions = extractedData.planting_instructions || extractedData.growing_instructions || '';
         document.getElementById('extracted_planting_instructions').value = plantingInstructions;
@@ -685,7 +625,6 @@
         document.getElementById('extracted_sun_exposure').value = extractedData.sun_exposure || extractedData.light_requirements || '';
         document.getElementById('extracted_soil_type').value = extractedData.soil_type || extractedData.soil_temperature || '';
         document.getElementById('extracted_watering').value = extractedData.watering || '';
-        document.getElementById('extracted_fertilizer').value = extractedData.fertilizer || '';
     }
     
     // Apply extracted data to seed packet
@@ -706,15 +645,6 @@
             formData.append('description', document.getElementById('extracted_description').value || currentPacket.description || '');
             formData.append('quantity', currentPacket.quantity); // Keep existing quantity
             
-            // Handle optional fields
-            const packageWeight = document.getElementById('extracted_package_weight').value;
-            if (packageWeight) formData.append('package_weight', packageWeight);
-            else formData.append('package_weight', currentPacket.package_weight || '');
-            
-            const expirationDate = document.getElementById('extracted_expiration_date').value;
-            if (expirationDate) formData.append('expiration_date', expirationDate);
-            else formData.append('expiration_date', currentPacket.expiration_date ? currentPacket.expiration_date.split('T')[0] : '');
-            
             formData.append('planting_instructions', document.getElementById('extracted_planting_instructions').value || currentPacket.planting_instructions || '');
             
             const daysToGermination = document.getElementById('extracted_days_to_germination').value;
@@ -725,7 +655,6 @@
             formData.append('sun_exposure', document.getElementById('extracted_sun_exposure').value || currentPacket.sun_exposure || '');
             formData.append('soil_type', document.getElementById('extracted_soil_type').value || currentPacket.soil_type || '');
             formData.append('watering', document.getElementById('extracted_watering').value || currentPacket.watering || '');
-            formData.append('fertilizer', document.getElementById('extracted_fertilizer').value || currentPacket.fertilizer || '');
             
             // Update the seed packet
             const updateResponse = await fetch(`/seed-packets/{{ seed_packet.id }}`, {

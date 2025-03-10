@@ -12,6 +12,8 @@ def update_forward_refs():
     from app.schemas.plants import Plant
     from app.schemas.notes import Note
     from app.schemas.seed_packets import SeedPacket
+    from app.schemas.images import Image
     
     # Update models with forward references
     SeedPacket.model_rebuild(force=True)
+    Image.model_rebuild(force=True)

@@ -13,13 +13,14 @@ class GardenSupply(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    image_path = Column(String, nullable=True)
+    image_path = Column(String, nullable=True)  # Legacy field, to be migrated
     description = Column(String, nullable=True)
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
     # Relationships
     notes = relationship("Note", backref="garden_supply")
+    images = relationship("Image", secondary="garden_supply_image", back_populates="garden_supplies")
 
     def __repr__(self):
         return f"<GardenSupply {self.name}>"

@@ -32,6 +32,7 @@ class Plant(Base):
     garden_supplies = relationship("GardenSupply", secondary="plant_supplies", backref="plants")
     notes = relationship("Note", backref="plant")
     harvests = relationship("Harvest", back_populates="plant")
+    images = relationship("Image", secondary="plant_image", back_populates="plants")
     
     def __repr__(self):
         return f"<Plant {self.name}>"

@@ -14,9 +14,6 @@ class SeedPacketCreateForm:
         sun_exposure: str = Form(None),
         soil_type: str = Form(None),
         watering: str = Form(None),
-        fertilizer: str = Form(None),
-        package_weight: float = Form(None),
-        expiration_date: str = Form(None),
         quantity: int = Form(...),
         image: UploadFile = File(None)
     ):
@@ -29,8 +26,5 @@ class SeedPacketCreateForm:
         self.sun_exposure = sun_exposure
         self.soil_type = soil_type
         self.watering = watering
-        self.fertilizer = fertilizer
-        self.package_weight = package_weight
-        self.expiration_date = datetime.strptime(expiration_date, "%Y-%m-%d").date() if expiration_date else None 
         self.quantity = quantity
         self.image = image

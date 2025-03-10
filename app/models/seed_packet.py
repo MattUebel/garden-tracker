@@ -15,16 +15,14 @@ class SeedPacket(Base):
     sun_exposure = Column(String, nullable=True)
     soil_type = Column(String, nullable=True)
     watering = Column(String, nullable=True)
-    fertilizer = Column(String, nullable=True)
-    package_weight = Column(Float, nullable=True)
-    expiration_date = Column(Date, nullable=True)
     quantity = Column(Integer, nullable=False)
-    image_path = Column(String, nullable=True)
+    image_path = Column(String, nullable=True)  # Legacy field, to be migrated
     created_at = Column(DateTime, nullable=False, default=func.now())
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
     
     # Relationships
     notes = relationship("Note", backref="seed_packet")
+    images = relationship("Image", secondary="seed_packet_image", back_populates="seed_packets")
 
     def __repr__(self):
         return f"<SeedPacket {self.name}>"

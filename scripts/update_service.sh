@@ -101,9 +101,6 @@ if [[ $TABLES_EXIST == *"t"* ]]; then
                 ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS sun_exposure VARCHAR;
                 ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS soil_type VARCHAR;
                 ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS watering VARCHAR;
-                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS fertilizer VARCHAR;
-                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS package_weight FLOAT;
-                ALTER TABLE seed_packets ADD COLUMN IF NOT EXISTS expiration_date DATE;
             EXCEPTION WHEN OTHERS THEN
                 -- If there's an error, log it but continue
                 RAISE NOTICE 'Error adding columns: %', SQLERRM;

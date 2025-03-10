@@ -1,6 +1,7 @@
 from typing import Optional, List, ForwardRef, TYPE_CHECKING
 from datetime import date, datetime
 from app.schemas import GardenBaseModel
+from app.schemas.images import Image
 
 # Use conditional imports to avoid circular dependencies
 if TYPE_CHECKING:
@@ -21,11 +22,8 @@ class SeedPacketBase(GardenBaseModel):
     sun_exposure: Optional[str] = None
     soil_type: Optional[str] = None
     watering: Optional[str] = None
-    fertilizer: Optional[str] = None
-    package_weight: Optional[float] = None
-    expiration_date: Optional[date] = None
     quantity: int
-    image_path: Optional[str] = None
+    image_path: Optional[str] = None  # Legacy field for backward compatibility
 
 class SeedPacketCreate(SeedPacketBase):
     pass
@@ -34,5 +32,16 @@ class SeedPacket(SeedPacketBase):
     id: int
     created_at: datetime
     updated_at: datetime
-    plants: List[PlantRef]
-    notes: List[NoteRef]
+    plants: List[PlantRef] = []
+    notes: List[NoteRef] = []
+    images: List[Image] = []  # New field for multiple images
+    
+    # Property to ensure backward compatibility with templates
+    @property
+    def primary_image_path(self) -> Optional[str]:
+        """Returns either the legacy image_path or the path of the first image in the new images relationship."""
+        if self.image_path:
+            return self.image_path
+        elif self.images and len(self.images) > 0:
+            return self.images[0].file_path
+        return None

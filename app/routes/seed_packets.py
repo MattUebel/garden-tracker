@@ -41,9 +41,6 @@ async def create_seed_packet(
         sun_exposure=form.sun_exposure,
         soil_type=form.soil_type,
         watering=form.watering,
-        fertilizer=form.fertilizer,
-        package_weight=form.package_weight,
-        expiration_date=form.expiration_date,
         quantity=form.quantity,
         image_path=image_path
     )
@@ -101,9 +98,6 @@ async def update_seed_packet(
     sun_exposure: str = Form(None),
     soil_type: str = Form(None),
     watering: str = Form(None),
-    fertilizer: str = Form(None),
-    package_weight: float = Form(None),
-    expiration_date: str = Form(None),
     quantity: int = Form(...),
     image: UploadFile = File(None),
     db: Session = Depends(get_db)
@@ -130,9 +124,6 @@ async def update_seed_packet(
     db_seed_packet.sun_exposure = sun_exposure
     db_seed_packet.soil_type = soil_type
     db_seed_packet.watering = watering
-    db_seed_packet.fertilizer = fertilizer
-    db_seed_packet.package_weight = package_weight
-    db_seed_packet.expiration_date = datetime.strptime(expiration_date, "%Y-%m-%d").date() if expiration_date else None
     db_seed_packet.quantity = quantity
     
     db.commit()
@@ -159,9 +150,6 @@ async def duplicate_seed_packet(seed_packet_id: int, db: Session = Depends(get_d
             sun_exposure=original.sun_exposure,
             soil_type=original.soil_type,
             watering=original.watering,
-            fertilizer=original.fertilizer,
-            package_weight=original.package_weight,
-            expiration_date=original.expiration_date,
             quantity=original.quantity
         )
         
@@ -298,7 +286,7 @@ async def process_seed_packet_ocr(
                         "role": "user",
                         "content": [
                             ImageURLChunk(image_url=base64_data_url),
-                            TextChunk(text=f"This is image's OCR in markdown:\n<BEGIN_IMAGE_OCR>\n{ocr_text}\n<END_IMAGE_OCR>.\nConvert this into a sensible structured JSON object with fields for name, variety, description, planting_instructions, days_to_germination, spacing, sun_exposure, soil_type, watering, fertilizer, package_weight. The output should be strictly JSON with no extra commentary.")
+                            TextChunk(text=f"This is image's OCR in markdown:\n<BEGIN_IMAGE_OCR>\n{ocr_text}\n<END_IMAGE_OCR>.\nConvert this into a sensible structured JSON object with fields for name, variety, description, planting_instructions, days_to_germination, spacing, sun_exposure, soil_type, watering. The output should be strictly JSON with no extra commentary.")
                         ],
                     },
                 ],
@@ -318,7 +306,7 @@ async def process_seed_packet_ocr(
                     messages=[
                         {
                             "role": "user",
-                            "content": f"This is image's OCR in markdown:\n<BEGIN_IMAGE_OCR>\n{ocr_text}\n<END_IMAGE_OCR>.\nConvert this into a sensible structured JSON object with fields for name, variety, description, planting_instructions, days_to_germination, spacing, sun_exposure, soil_type, watering, fertilizer, package_weight. The output should be strictly JSON with no extra commentary."
+                            "content": f"This is image's OCR in markdown:\n<BEGIN_IMAGE_OCR>\n{ocr_text}\n<END_IMAGE_OCR>.\nConvert this into a sensible structured JSON object with fields for name, variety, description, planting_instructions, days_to_germination, spacing, sun_exposure, soil_type, watering. The output should be strictly JSON with no extra commentary."
                         },
                     ],
                     response_format={"type": "json_object"},
@@ -385,9 +373,6 @@ Extract these fields from the seed packet text (return as JSON):
 - sun_exposure: Light requirements
 - soil_type: Soil preferences
 - watering: Watering instructions
-- fertilizer: Fertilizer recommendations
-- package_weight: Weight in grams (just the number)
-- expiration_date: Date in YYYY-MM-DD format
 
 Only return a JSON object with these fields. Use null for missing information.
 
@@ -519,7 +504,7 @@ Here's the text from the seed packet:
 {ocr_text}
 
 IMPORTANT FORMATTING GUIDELINES:
-- For the "name" field, provide ONLY the basic plant type (Tomato, Carrot, Lettuce, etc.)
+- For the "name" field, provide ONLY the basic plant type (Tomato, Carrot, Lettuce, etc.) without varieties
 - For the "title" field, provide the full name as it appears on the packet 
 - For the "variety" field, extract the specific cultivar name separate from the basic name
 
@@ -539,8 +524,6 @@ Extract these specific fields in JSON format:
 - sun_exposure: Light requirements
 - soil_type: Soil requirements
 - watering: Watering needs
-- fertilizer: Fertilizer instructions
-- package_weight: Weight in grams with unit (e.g., "100 mg", "5 g")
 
 Return ONLY a JSON object with these fields. Use null for missing information.
 """
@@ -624,8 +607,6 @@ Extract these specific fields in JSON format:
 - sun_exposure: Light requirements
 - soil_type: Soil requirements
 - watering: Watering needs
-- fertilizer: Fertilizer instructions
-- package_weight: Weight in grams (just numeric value)
 - expiration_date: Date in YYYY-MM-DD format (if available)
 
 Return ONLY a JSON object with these fields. Use null for missing information.
